@@ -8,5 +8,21 @@ def extract_text(pdf_path: str) -> str:
     doc.close()
     return text.replace('\n', ', ')
 
-def chunk_text(text, max_chars=4000):
-    return [text[i:i+max_chars] for i in range(0, len(text), max_chars)]
+def chunk_text(text, chunk_size=1500, overlap=200):
+
+    words = text.split()
+
+    chunks = []
+
+    start = 0
+
+    while start < len(words):
+
+        end = start + chunk_size
+        chunk = words[start:end]
+
+        chunks.append(" ".join(chunk))
+
+        start += chunk_size - overlap
+
+    return chunks

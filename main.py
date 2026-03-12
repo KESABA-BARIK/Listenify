@@ -6,7 +6,9 @@ from fastapi.responses import FileResponse
 import shutil
 import os
 from pdf_extractor import extract_text
-from tts_engine import text_to_audiobook
+from podcast_service import generate_podcast_script, clean_podcast_script
+from summary_service import summarize_text
+from tts_engine import text_to_audiobook, podcast_to_audio
 from audio_merger import merge_mp3_files
 import redis
 
@@ -27,8 +29,13 @@ def process_pdf(pdf_path: str, job_id: str):
         # 1. Extract text
         text = extract_text(pdf_path)
 
+        summary = summarize_text(text)
+        script = generate_podcast_script(summary)
+
+        script = clean_podcast_script(script)
+
         # 2. Generate audio chunks
-        audio_files = text_to_audiobook(text, f"audiobooks/{job_id}")
+        audio_files = podcast_to_audio(script, f"audiobooks/{job_id}")
 
         # 3. Merge
         final_audio = f"audiobooks/{job_id}_full.mp3"

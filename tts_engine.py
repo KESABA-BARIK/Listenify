@@ -58,3 +58,42 @@ def text_to_audiobook(text, output_path, voice="en-US-GuyNeural"):
         )
     finally:
         loop.close()
+
+
+
+async def _podcast_to_audio_async(script, output_path):
+    sem = asyncio.Semaphore(5)  # ✅ bound to correct loop
+    lines = script.split("\n")
+    tasks = []
+    index = 0
+
+    for line in lines:
+        if not line.split():
+            continue
+
+        voice = "en-US-GuyNeural"
+
+        if line.startswith("Host:"):
+            voice = "en-US-GuyNeural"
+            line = line.replace("Host:", "").strip()
+        elif line.startswith("Expert:"):
+            voice = "en-US-JennyNeural"
+            line = line.replace("Expert:", "").strip()
+
+        filename = f"{output_path}_part{index}.mp3"
+        tasks.append(_synthesize_chunk(line, filename, voice, sem))
+
+        index = index + 1
+    results = await asyncio.gather(*tasks)
+
+    return [f"{output_path}_part{i}.mp3" for i in range(index)]
+
+def podcast_to_audio(script, output_path):
+    loop = asyncio.new_event_loop()
+    try:
+        asyncio.set_event_loop(loop)
+        return loop.run_until_complete(
+            _podcast_to_audio_async(script, output_path)
+        )
+    finally:
+        loop.close()
