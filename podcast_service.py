@@ -38,12 +38,22 @@ def clean_podcast_script(script):
 
 
 def generate_podcast_script(summary):
-
     prompt = f"""
-    Turn this summary into a short engaging podcast conversation.
+    You are generating a podcast conversation.
+
+    Turn the following research summary into an engaging discussion
+    between a Host and an Expert.
+
+    Rules:
+    - Keep it conversational
+    - Explain complex ideas simply
+    - Do not repeat the summary verbatim
+    - Keep it concise but informative
 
     Format strictly like:
 
+    Host: ...
+    Expert: ...
     Host: ...
     Expert: ...
 
@@ -69,6 +79,7 @@ def generate_podcast_script(summary):
 
     script = response.choices[0].message.content
 
+    print("\n\n\n\nprompt: ", prompt)
     print("Podcast: ", script)
 
     return clean_podcast_script(script)

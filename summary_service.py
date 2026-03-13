@@ -28,4 +28,4 @@ def summarize_text(text):
         summaries.append(response.choices[0].message.content)
 
     print("Summaries: ", summaries)
-    return "\n".join(summaries)
+    return summaries

@@ -30,12 +30,16 @@ def process_pdf(pdf_path: str, job_id: str):
         text = extract_text(pdf_path)
 
         summary = summarize_text(text)
-        script = generate_podcast_script(summary)
+        scripts = []
+        for sum in summary:
+            script = generate_podcast_script(sum)
+            script = clean_podcast_script(script)
+            scripts.append(script)
 
-        script = clean_podcast_script(script)
+        full_script = "\n".join(scripts)
 
         # 2. Generate audio chunks
-        audio_files = podcast_to_audio(script, f"audiobooks/{job_id}")
+        audio_files = podcast_to_audio(full_script, f"audiobooks/{job_id}")
 
         # 3. Merge
         final_audio = f"audiobooks/{job_id}_full.mp3"
@@ -158,7 +162,7 @@ async def stream_audiobook(job_id: str, request: Request):
 
 @app.get("/audiobook/{job_id}/download")
 def download_audiobook(job_id: str):
-    job = r.hgetall(f"audiobook:{job_id}_full")
+    job = r.hgetall(f"audiobook:{job_id}")
     if not job or job.get("status") != "ready":
         raise HTTPException(status_code=404)
 
