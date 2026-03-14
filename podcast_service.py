@@ -21,13 +21,13 @@ def clean_podcast_script(script):
         if line.startswith("#"):
             continue
 
-        # normalize HOST
-        line = re.sub(r"\*\*Host.*?:\*\*", "Host:", line)
-        line = re.sub(r"Host.*?:", "Host:", line)
+        # normalize HOST EXPERT
+        line = re.sub(r"^\*\*?Host.*?:\*\*?", "Host:", line)
+        line = re.sub(r"^\*\*?Expert.*?:\*\*?", "Expert:", line)
 
-        # normalize EXPERT
-        line = re.sub(r"\*\*Expert.*?:\*\*", "Expert:", line)
-        line = re.sub(r"Expert.*?:", "Expert:", line)
+        line = line.replace("Host -", "Host:")
+        line = line.replace("Expert -", "Expert:")
+        line = line.replace("**", "")
 
         # remove stray markdown
         line = line.replace("**", "")

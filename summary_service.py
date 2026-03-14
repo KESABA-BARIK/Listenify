@@ -13,19 +13,24 @@ def summarize_text(text):
 
     summaries = []
 
-    for chunk in chunks:
+    for i,chunk in enumerate(chunks):
+
+        if not chunk.strip():
+            continue
 
         response = client.chat.completions.create(
             model="llama-3.1-8b-instant",
             messages=[
-                {"role": "system", "content": "Summarize this text clearly."},
+                {"role": "system", "content": "Summarize this text clearly in 4-8 bullet points."},
                 {"role": "user", "content": chunk}
             ],
             temperature=0.2,
             max_tokens=300
         )
 
-        summaries.append(response.choices[0].message.content)
+        summary = response.choices[0].message.content.strip()
+        summaries.append(summary)
 
-    print("Summaries: ", summaries)
+        print(f"\n--- Summary {i + 1} ---\n{summary}")
+
     return summaries
