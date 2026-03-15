@@ -53,7 +53,7 @@ def clean_podcast_script(script):
     return "\n".join(cleaned)
 
 
-def generate_podcast_script(summary, length: str="full"):
+def generate_podcast_script(summary, length: str="full", language: str="English"):
     settings = LENGTH_SCRIPT_SETTINGS.get(length, LENGTH_SCRIPT_SETTINGS["full"])
     prompt = f"""
     You are generating a podcast conversation.
@@ -62,12 +62,13 @@ def generate_podcast_script(summary, length: str="full"):
     between a Host and an Expert.
 
     Rules:
+    - Write the ENTIRE conversation in {language}.
     - Keep it conversational
     - Explain complex ideas simply
     - Do not repeat the summary verbatim
     - {settings["instruction"]}
 
-    Format strictly like:
+    Format strictly like (labels Host: and Expert: must stay in English even if content is in {language}):
 
     Host: ...
     Expert: ...
@@ -83,7 +84,7 @@ def generate_podcast_script(summary, length: str="full"):
         messages=[
             {
                 "role": "system",
-                "content": "Convert summaries into a podcast conversation between Host and Expert."
+                "content": "Convert summaries into a podcast conversation between Host and Expert  Always respond entirely in {language_name}."
             },
             {
                 "role": "user",

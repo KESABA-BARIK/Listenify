@@ -6,9 +6,14 @@ from fastapi.responses import StreamingResponse
 from fastapi.responses import FileResponse
 import shutil
 import os
+
+from starlette.responses import PlainTextResponse
+
+from language_config import get_language_config, DEFAULT_LANGUAGE, supported_languages
 from pdf_extractor import extract_text
 from podcast_service import generate_podcast_script, clean_podcast_script
 from summary_service import summarize_text
+from transcript_service import save_transcript
 from tts_engine import text_to_audiobook, podcast_to_audio
 from audio_merger import merge_mp3_files
 import redis
@@ -22,11 +27,13 @@ router = APIRouter()
 CHUNK_SIZE = 1024 * 1024
 VALID_LENGTHS = {"brief", "standard", "full"}
 
-def process_pdf(pdf_path: str, job_id: str, length:str="full"):
+def process_pdf(pdf_path: str, job_id: str, length:str="full", language:str="english"):
     try:
         r.hset(f"audiobook:{job_id}", mapping={
             "status": "processing"
         })
+
+        lang_config = get_language_config(language)
 
         # 1. Extract text
         text = extract_text(pdf_path)
@@ -34,14 +41,17 @@ def process_pdf(pdf_path: str, job_id: str, length:str="full"):
         summary = summarize_text(text, length=length)
         scripts = []
         for sum in summary:
-            script = generate_podcast_script(sum,length=length)
+            script = generate_podcast_script(sum,length=length,language=lang_config["llm_name"])
             script = clean_podcast_script(script)
             scripts.append(script)
 
         full_script = "\n".join(scripts)
 
+        transcript_path = save_transcript(full_script, job_id)
+        r.hset(f"audiobook:{job_id}", mapping={"trancript_path": transcript_path})
+
         # 2. Generate audio chunks
-        audio_files = podcast_to_audio(full_script, f"audiobooks/{job_id}")
+        audio_files = podcast_to_audio(full_script, f"audiobooks/{job_id}",host_voice=lang_config["host_voice"],expert_voice=lang_config["expert_voice"])
 
         # 3. Merge
         final_audio = f"audiobooks/{job_id}_full.mp3"
@@ -52,6 +62,8 @@ def process_pdf(pdf_path: str, job_id: str, length:str="full"):
             "status": "ready",
             "final_path": final_audio,
             "length": length,
+            "transcript_path": transcript_path,
+            "language": language,
         })
 
     except Exception as e:
@@ -61,26 +73,36 @@ def process_pdf(pdf_path: str, job_id: str, length:str="full"):
         })
 
 @app.post("/upload")
-async def upload_pdf(file: UploadFile = File(...),background_tasks: BackgroundTasks = BackgroundTasks(), length: str=Form(default="full")):
+async def upload_pdf(file: UploadFile = File(...),background_tasks: BackgroundTasks = BackgroundTasks(), length: str=Form(default="full"),
+    language: str = Form(default=DEFAULT_LANGUAGE)):
     if length not in VALID_LENGTHS:
         raise HTTPException(
             status_code=400,
             detail=f"Invalid length '{length}'. Must be one of: brief, standard, full"
         )
+    try:
+        get_language_config(language)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     job_id = str(uuid.uuid4())
     pdf_path = f"uploads/{job_id}_{file.filename}"
 
     with open(pdf_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
-    r.hset(f"audiobook:{job_id}", mapping={"status": "uploading", "length":length})
-    background_tasks.add_task(process_pdf, pdf_path, job_id, length)
+    r.hset(f"audiobook:{job_id}", mapping={"status": "uploading", "length":length,"language":language})
+    background_tasks.add_task(process_pdf, pdf_path, job_id, length,language)
 
     return {
         "job_id": job_id,
         "status": "started",
+        "length": length,
+        "language": language,
     }
-
+@app.get("/languages")
+def list_languages():
+    """Returns all supported language names."""
+    return {"supported_languages": supported_languages()}
 @app.post("/status/{job_id}")
 def status(job_id: str):
     job = r.hgetall(f"audiobook:{job_id}")
@@ -179,3 +201,28 @@ def download_audiobook(job_id: str):
         media_type="audio/mpeg",
         filename=f"{job_id}.mp3"
     )
+
+
+@app.get("/audiobook/{job_id}/transcript")
+def get_transcript(job_id: str):
+    job = r.hgetall(f"audiobook:{job_id}")
+    if not job or job.get("status") != "ready":
+        raise HTTPException(status_code=404, detail="Audiobook not ready")
+    transcript_path = job.get("transcript_path")
+    if not transcript_path or not os.path.exists(transcript_path):
+        raise HTTPException(status_code=404, detail="Transcript not found")
+    with open(transcript_path, "r", encoding="utf-8") as f:
+        content = f.read()
+    return PlainTextResponse(content)
+
+
+@app.get("/audiobook/{job_id}/transcript/download")
+def download_transcript(job_id: str):
+    job = r.hgetall(f"audiobook:{job_id}")
+    if not job or job.get("status") != "ready":
+        raise HTTPException(status_code=404, detail="Audiobook not ready")
+    transcript_path = job.get("transcript_path")
+    if not transcript_path or not os.path.exists(transcript_path):
+        raise HTTPException(status_code=404, detail="Transcript not found")
+    return FileResponse(transcript_path, media_type="text/plain",
+                        filename=f"{job_id}_transcript.txt")

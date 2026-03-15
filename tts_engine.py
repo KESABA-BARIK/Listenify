@@ -1,55 +1,57 @@
-import random
-
 import edge_tts
 import asyncio
 import os
 from pdf_extractor import chunk_text
 
-
 MAX_RETRIES = 5
 BASE_DELAY = 2
 
+
 async def _synthesize_chunk(text, filename, voice, sem):
-    for attempt in range(1,MAX_RETRIES+1):
+    for attempt in range(1, MAX_RETRIES + 1):
         try:
             async with sem:
                 communicate = edge_tts.Communicate(text=text, voice=voice)
                 await communicate.save(filename)
-            return
-        except Exception as e:
-            if attempt == MAX_RETRIES:
-               raise e
 
-            # exponential backoff + jitter
+            if not os.path.exists(filename) or os.path.getsize(filename) == 0:
+                raise Exception(f"Empty output file")
+
+            return
+
+        except Exception as e:
+            print(f"[tts] attempt {attempt}/{MAX_RETRIES} FAILED")
+            print(f"      voice  : {voice}")
+            print(f"      text   : {repr(text[:120])}")
+            print(f"      error  : {e}")
+            if attempt == MAX_RETRIES:
+                raise Exception(
+                    f"All {MAX_RETRIES} retries failed. "
+                    f"voice='{voice}' | error={e} | text={repr(text[:80])}"
+                )
             delay = BASE_DELAY * (2 ** (attempt - 1))
             await asyncio.sleep(delay)
 
 
 async def _text_to_audiobook_async(text, output_path, voice):
-    sem = asyncio.Semaphore(5)  # ✅ bound to correct loop
+    sem = asyncio.Semaphore(5)
     chunks = chunk_text(text)
-    tasks = []
-
-    for i, chunk in enumerate(chunks):
-        filename = f"{output_path}_part{i}.mp3"
-        tasks.append(
-            _synthesize_chunk(chunk, filename, voice, sem)
-        )
+    tasks = [
+        _synthesize_chunk(chunk, f"{output_path}_part{i}.mp3", voice, sem)
+        for i, chunk in enumerate(chunks)
+    ]
 
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
     failed = [r for r in results if isinstance(r, Exception)]
     if failed:
-        raise Exception(f"{len(failed)} audio chunks failed")
+        raise Exception(f"{len(failed)} audio chunks failed:\n" +
+                        "\n".join(f"  {e}" for e in failed))
 
     return [f"{output_path}_part{i}.mp3" for i in range(len(chunks))]
 
 
-
 def text_to_audiobook(text, output_path, voice="en-US-GuyNeural"):
-    """
-    Synchronous wrapper for edge-tts audiobook generation
-    """
     loop = asyncio.new_event_loop()
     try:
         asyncio.set_event_loop(loop)
@@ -60,40 +62,82 @@ def text_to_audiobook(text, output_path, voice="en-US-GuyNeural"):
         loop.close()
 
 
+def _clean_text_for_tts(text: str) -> str:
+    """
+    Strip characters that cause edge-tts to reject a line.
+    - removes markdown bold/italic asterisks
+    - removes brackets used for stage directions e.g. [pause]
+    - collapses multiple spaces/newlines
+    - strips leading/trailing whitespace
+    """
+    import re
+    text = text.replace("*", "")
+    text = re.sub(r"\[.*?\]", "", text)   # remove [stage directions]
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()
 
-async def _podcast_to_audio_async(script, output_path):
-    sem = asyncio.Semaphore(5)  # ✅ bound to correct loop
+
+async def _podcast_to_audio_async(script, output_path, host_voice, expert_voice):
+    sem = asyncio.Semaphore(3)
     lines = script.split("\n")
     tasks = []
-    index = 0
+    filenames = []
+
+    print(f"\n[tts] === script breakdown ===")
+    for i, line in enumerate(lines):
+        print(f"  raw line {i:03d}: {repr(line)}")
+    print(f"[tts] === end script ===\n")
 
     for line in lines:
-        if not line.split():
+        stripped = line.strip()
+        if not stripped:
             continue
 
-        voice = "en-US-GuyNeural"
+        if stripped.startswith("Host:"):
+            voice = host_voice
+            text = stripped[len("Host:"):].strip()
+        elif stripped.startswith("Expert:"):
+            voice = expert_voice
+            text = stripped[len("Expert:"):].strip()
+        else:
+            print(f"[tts] skipping untagged line: {repr(stripped[:80])}")
+            continue
 
-        if line.startswith("Host:"):
-            voice = "en-US-GuyNeural"
-            line = line.replace("Host:", "").strip()
-        elif line.startswith("Expert:"):
-            voice = "en-US-JennyNeural"
-            line = line.replace("Expert:", "").strip()
+        text = _clean_text_for_tts(text)
 
-        filename = f"{output_path}_part{index}.mp3"
-        tasks.append(_synthesize_chunk(line, filename, voice, sem))
+        if not text:
+            print(f"[tts] skipping empty text after cleaning (voice={voice})")
+            continue
 
-        index = index + 1
-    results = await asyncio.gather(*tasks)
+        print(f"[tts] queuing | voice={voice} | text={repr(text[:80])}")
 
-    return [f"{output_path}_part{i}.mp3" for i in range(index)]
+        filename = f"{output_path}_part{len(filenames)}.mp3"
+        filenames.append(filename)
+        tasks.append(_synthesize_chunk(text, filename, voice, sem))
 
-def podcast_to_audio(script, output_path):
+    print(f"\n[tts] synthesising {len(tasks)} lines | host={host_voice} | expert={expert_voice}\n")
+
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    failed = [(i, r) for i, r in enumerate(results) if isinstance(r, Exception)]
+    if failed:
+        details = "\n".join(f"  line {i}: {e}" for i, e in failed)
+        raise Exception(f"{len(failed)} TTS lines failed:\n{details}")
+
+    return filenames
+
+
+def podcast_to_audio(
+    script,
+    output_path,
+    host_voice="en-US-GuyNeural",
+    expert_voice="en-US-JennyNeural"
+):
     loop = asyncio.new_event_loop()
     try:
         asyncio.set_event_loop(loop)
         return loop.run_until_complete(
-            _podcast_to_audio_async(script, output_path)
+            _podcast_to_audio_async(script, output_path, host_voice, expert_voice)
         )
     finally:
         loop.close()
