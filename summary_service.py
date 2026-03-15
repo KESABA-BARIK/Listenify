@@ -7,9 +7,19 @@ from pdf_extractor import chunk_text
 API_KEY = os.getenv('GROQ_API_KEY')
 client = Groq(api_key=API_KEY)
 
-def summarize_text(text):
+LENGTH_CHUNK_SIZE = {
+    "brief":3,
+    "standard":8,
+    "full":None
+}
+
+def summarize_text(text, length: str = "full"):
 
     chunks = chunk_text(text)
+
+    limit = LENGTH_CHUNK_SIZE.get(length)
+    if limit is not None:
+        chunks = chunks[:limit]
 
     summaries = []
 

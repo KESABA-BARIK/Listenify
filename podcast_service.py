@@ -5,6 +5,22 @@ import re
 
 API_KEY = os.getenv('GROQ_API_KEY')
 client = Groq(api_key=API_KEY)
+
+LENGTH_SCRIPT_SETTINGS = {
+    "brief": {
+        "max_tokens": 400,
+        "instruction": "Keep it very short — 3 to 4 exchanges only. Hit only the single most important point."
+    },
+    "standard": {
+        "max_tokens": 1200,
+        "instruction": "Keep it moderate — 6 to 8 exchanges. Cover the key ideas without going into full detail."
+    },
+    "full": {
+        "max_tokens": 8192,
+        "instruction": "Be thorough — cover all major points with depth. Allow natural elaboration and follow-up questions."
+    }
+}
+
 def clean_podcast_script(script):
 
     lines = script.split("\n")
@@ -37,7 +53,8 @@ def clean_podcast_script(script):
     return "\n".join(cleaned)
 
 
-def generate_podcast_script(summary):
+def generate_podcast_script(summary, length: str="full"):
+    settings = LENGTH_SCRIPT_SETTINGS.get(length, LENGTH_SCRIPT_SETTINGS["full"])
     prompt = f"""
     You are generating a podcast conversation.
 
@@ -48,7 +65,7 @@ def generate_podcast_script(summary):
     - Keep it conversational
     - Explain complex ideas simply
     - Do not repeat the summary verbatim
-    - Keep it concise but informative
+    - {settings["instruction"]}
 
     Format strictly like:
 
@@ -74,7 +91,7 @@ def generate_podcast_script(summary):
             }
         ],
         temperature=0.7,
-        max_completion_tokens=8192,
+        max_completion_tokens=settings["max_tokens"],
     )
 
     script = response.choices[0].message.content

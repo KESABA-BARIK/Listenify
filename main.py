@@ -1,6 +1,7 @@
 import uuid
+from email.policy import default
 
-from fastapi import FastAPI, UploadFile, File, BackgroundTasks, APIRouter, Request, HTTPException
+from fastapi import FastAPI, UploadFile, File, BackgroundTasks, APIRouter, Request, HTTPException, Form
 from fastapi.responses import StreamingResponse
 from fastapi.responses import FileResponse
 import shutil
@@ -19,8 +20,9 @@ app = FastAPI()
 router = APIRouter()
 
 CHUNK_SIZE = 1024 * 1024
+VALID_LENGTHS = {"brief", "standard", "full"}
 
-def process_pdf(pdf_path: str, job_id: str):
+def process_pdf(pdf_path: str, job_id: str, length:str="full"):
     try:
         r.hset(f"audiobook:{job_id}", mapping={
             "status": "processing"
@@ -29,10 +31,10 @@ def process_pdf(pdf_path: str, job_id: str):
         # 1. Extract text
         text = extract_text(pdf_path)
 
-        summary = summarize_text(text)
+        summary = summarize_text(text, length=length)
         scripts = []
         for sum in summary:
-            script = generate_podcast_script(sum)
+            script = generate_podcast_script(sum,length=length)
             script = clean_podcast_script(script)
             scripts.append(script)
 
@@ -48,7 +50,8 @@ def process_pdf(pdf_path: str, job_id: str):
         # 4. Mark completed
         r.hset(f"audiobook:{job_id}", mapping={
             "status": "ready",
-            "final_path": final_audio
+            "final_path": final_audio,
+            "length": length,
         })
 
     except Exception as e:
@@ -58,15 +61,20 @@ def process_pdf(pdf_path: str, job_id: str):
         })
 
 @app.post("/upload")
-async def upload_pdf(file: UploadFile = File(...),background_tasks: BackgroundTasks = BackgroundTasks()):
+async def upload_pdf(file: UploadFile = File(...),background_tasks: BackgroundTasks = BackgroundTasks(), length: str=Form(default="full")):
+    if length not in VALID_LENGTHS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid length '{length}'. Must be one of: brief, standard, full"
+        )
     job_id = str(uuid.uuid4())
     pdf_path = f"uploads/{job_id}_{file.filename}"
 
     with open(pdf_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
-    r.hset(f"audiobook:{job_id}", mapping={"status": "uploading"})
-    background_tasks.add_task(process_pdf, pdf_path, job_id)
+    r.hset(f"audiobook:{job_id}", mapping={"status": "uploading", "length":length})
+    background_tasks.add_task(process_pdf, pdf_path, job_id, length)
 
     return {
         "job_id": job_id,
