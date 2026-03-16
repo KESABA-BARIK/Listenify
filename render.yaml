@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: listenify
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false          # you'll paste this in Render dashboard
+      - key: REDIS_URL
+        fromService:
+          name: listenify-redis
+          type: redis
+          property: connectionString
+
+  - type: redis
+    name: listenify-redis
+    plan: free
+    maxmemoryPolicy: noeviction

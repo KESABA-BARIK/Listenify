@@ -18,7 +18,19 @@ from tts_engine import text_to_audiobook, podcast_to_audio
 from audio_merger import merge_mp3_files
 import redis
 
-r = redis.Redis(host="localhost", port=6379, decode_responses=True)
+REDIS_URL = os.getenv("REDIS_URL")
+if REDIS_URL:
+    r = redis.from_url(REDIS_URL, decode_responses=True)
+else:
+    r = redis.Redis(host="localhost", port=6379, decode_responses=True)
+
+BASE_DIR = "/tmp" if os.path.exists("/tmp") and not os.name == "nt" else "."
+UPLOADS_DIR = os.path.join(BASE_DIR, "uploads")
+AUDIOBOOKS_DIR = os.path.join(BASE_DIR, "audiobooks")
+TRANSCRIPTS_DIR = os.path.join(BASE_DIR, "transcripts")
+
+for d in (UPLOADS_DIR, AUDIOBOOKS_DIR, TRANSCRIPTS_DIR):
+    os.makedirs(d, exist_ok=True)
 
 app = FastAPI()
 
