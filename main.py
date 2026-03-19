@@ -11,7 +11,7 @@ from starlette.responses import PlainTextResponse
 
 from language_config import get_language_config, DEFAULT_LANGUAGE, supported_languages
 from pdf_extractor import extract_text
-from podcast_service import generate_podcast_script, clean_podcast_script
+from podcast_service import generate_podcast_script, clean_podcast_script, DIFFICULTY
 from summary_service import summarize_text
 from transcript_service import save_transcript
 from tts_engine import text_to_audiobook, podcast_to_audio
@@ -38,8 +38,14 @@ router = APIRouter()
 
 CHUNK_SIZE = 1024 * 1024
 VALID_LENGTHS = {"brief", "standard", "full"}
+diff = {"beginner","intermediate","advanced"}
 
-def process_pdf(pdf_path: str, job_id: str, length:str="full", language:str="english"):
+def process_pdf(pdf_path: str,
+                job_id: str,
+                length:str="full",
+                language:str="english",
+                difficulty:str=DIFFICULTY,
+                debate:bool=False):
     try:
         r.hset(f"audiobook:{job_id}", mapping={
             "status": "processing"
@@ -53,14 +59,14 @@ def process_pdf(pdf_path: str, job_id: str, length:str="full", language:str="eng
         summary = summarize_text(text, length=length)
         scripts = []
         for sum in summary:
-            script = generate_podcast_script(sum,length=length,language=lang_config["llm_name"])
+            script = generate_podcast_script(sum,length=length,language=lang_config["llm_name"],difficulty=difficulty,debate=debate)
             script = clean_podcast_script(script)
             scripts.append(script)
 
         full_script = "\n".join(scripts)
 
         transcript_path = save_transcript(full_script, job_id)
-        r.hset(f"audiobook:{job_id}", mapping={"trancript_path": transcript_path})
+        r.hset(f"audiobook:{job_id}", mapping={"transcript_path": transcript_path})
 
         # 2. Generate audio chunks
         audio_files = podcast_to_audio(full_script, f"audiobooks/{job_id}",host_voice=lang_config["host_voice"],expert_voice=lang_config["expert_voice"])
@@ -76,6 +82,8 @@ def process_pdf(pdf_path: str, job_id: str, length:str="full", language:str="eng
             "length": length,
             "transcript_path": transcript_path,
             "language": language,
+            "difficulty": difficulty,
+            "debate": str(debate),
         })
 
     except Exception as e:
@@ -86,11 +94,18 @@ def process_pdf(pdf_path: str, job_id: str, length:str="full", language:str="eng
 
 @app.post("/upload")
 async def upload_pdf(file: UploadFile = File(...),background_tasks: BackgroundTasks = BackgroundTasks(), length: str=Form(default="full"),
-    language: str = Form(default=DEFAULT_LANGUAGE)):
+                     language: str = Form(default=DEFAULT_LANGUAGE),
+                     difficulty: str = Form(default=DIFFICULTY),
+                     debate: bool = Form(default=False)):
     if length not in VALID_LENGTHS:
         raise HTTPException(
             status_code=400,
             detail=f"Invalid length '{length}'. Must be one of: brief, standard, full"
+        )
+    if difficulty not in diff:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid difficulty '{difficulty}'. Must be one of {diff}"
         )
     try:
         get_language_config(language)
@@ -102,14 +117,21 @@ async def upload_pdf(file: UploadFile = File(...),background_tasks: BackgroundTa
     with open(pdf_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
-    r.hset(f"audiobook:{job_id}", mapping={"status": "uploading", "length":length,"language":language})
-    background_tasks.add_task(process_pdf, pdf_path, job_id, length,language)
+    r.hset(f"audiobook:{job_id}", mapping=
+    {"status": "uploading",
+     "length":length,
+     "language":language,
+     "difficulty":difficulty,
+     "debate":str(debate),})
+    background_tasks.add_task(process_pdf, pdf_path, job_id, length,language, difficulty, debate)
 
     return {
         "job_id": job_id,
         "status": "started",
         "length": length,
         "language": language,
+        "difficulty": difficulty,
+        "debate": str(debate),
     }
 @app.get("/languages")
 def list_languages():
