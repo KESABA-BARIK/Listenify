@@ -31,36 +31,47 @@ def estimate_timestamps(chapters: list[str], script: str) -> list[dict]:
     return result
 
 
-def _llm_detect_chapters(script: str, n_chapters: int = 5) -> list[str]:
+def _llm_detect_chapters(script: str, language: str = "English") -> list[str]:
     word_count = len(script.split())
     # aim for roughly one chapter every 200 words, between 3 and 8
     n_chapters = max(3, min(8, word_count // 200))
 
+    lang_instruction = (
+        f"CRITICAL: Write ALL chapter titles in {language}. Not in English — in {language}."
+        if language.lower() != "english"
+        else ""
+    )
+
     prompt = f"""
-    You are analyzing a podcast transcript to create chapter markers for a podcast player.
-
-    Read the transcript below and identify exactly {n_chapters} natural topic sections.
-    Each chapter title must:
-    - Be 3 to 6 words
-    - Describe what is actually discussed in that section
-    - Sound like a real podcast chapter (e.g. "How transformers learn language", "Limitations of the approach")
-    - NOT be generic (avoid "Introduction", "Part 1", "Discussion" alone)
-
-    Return ONLY a valid JSON array of {n_chapters} chapter title strings.
-    No explanation, no markdown fences, no extra text.
-
-    Example output:
-    ["Why language models need context", "The attention mechanism explained", "Training data and its problems", "Real world applications today", "What comes next in research"]
-    
-    Script:
-    {script[:6000]}
-    """
+You are analyzing a podcast transcript to create chapter markers.
+ 
+{lang_instruction}
+ 
+Read the transcript and identify exactly {n_chapters} natural topic sections.
+Each chapter title must:
+- Be 3 to 6 words
+- Describe what is actually discussed in that section
+- Sound like a real podcast chapter
+- NOT be generic (avoid "Introduction", "Part 1", "Discussion" alone)
+- Be written in {language}
+ 
+Return ONLY a valid JSON array of {n_chapters} chapter title strings in {language}.
+No explanation, no markdown, no extra text.
+ 
+Example for English: ["Why language models need context", "The attention mechanism explained", "Real world applications today"]
+ 
+Transcript:
+{script[:6000]}
+"""
 
     response = client.chat.completions.create(
         model="llama-3.1-8b-instant",
         messages=[
             {"role": "system",
-             "content": "You create podcast chapter markers. Return only valid JSON arrays of strings"},
+             "content": (
+                 f"You create podcast chapter markers. Return only valid JSON arrays of strings"
+                f"All the chapter titles must be written in {language}. "
+             )},
             {"role": "user", "content": prompt}
         ],
         temperature=0.3,
@@ -75,6 +86,7 @@ def _llm_detect_chapters(script: str, n_chapters: int = 5) -> list[str]:
     try:
         chapters = json.loads(raw)
         if isinstance(chapters, list) and all(isinstance(c, str) for c in chapters):
+            print(f"[chapters] LLM returned {len(chapters)} chapters in {language}")
             return chapters
     except json.JSONDecodeError:
         pass
@@ -83,8 +95,8 @@ def _llm_detect_chapters(script: str, n_chapters: int = 5) -> list[str]:
     print(f"[chapters] LLM returned unparseable output: {raw[:200]}")
     return [f"Chapter {i + 1}" for i in range(n_chapters)]
 
-def generate_chapters(script: str) -> list[dict]:
-    chapter_titles = _llm_detect_chapters(script)
+def generate_chapters(script: str,language: str = "English") -> list[dict]:
+    chapter_titles = _llm_detect_chapters(script, language = language)
     chapters = estimate_timestamps(chapter_titles, script)
 
     print(f"[chapters] final chapter list:")

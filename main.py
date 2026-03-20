@@ -9,6 +9,7 @@ import shutil
 import os
 
 from starlette.responses import PlainTextResponse
+from fastapi.middleware.cors import CORSMiddleware
 
 from chapter_service import generate_chapters, chapters_to_transcript_header
 from language_config import get_language_config, DEFAULT_LANGUAGE, supported_languages
@@ -36,6 +37,16 @@ for d in (UPLOADS_DIR, AUDIOBOOKS_DIR, TRANSCRIPTS_DIR):
     os.makedirs(d, exist_ok=True)
 
 app = FastAPI()
+
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[FRONTEND_URL],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 router = APIRouter()
 
@@ -68,7 +79,7 @@ def process_pdf(pdf_path: str,
 
         full_script = "\n".join(scripts)
 
-        chapters = generate_chapters(full_script)
+        chapters = generate_chapters(full_script,language=lang_config["llm_name"])
         chaps_json = json.dumps(chapters, ensure_ascii=False)
 
         show_notes = generate_show_notes(full_script,language=lang_config["llm_name"])
@@ -152,7 +163,7 @@ async def upload_pdf(file: UploadFile = File(...),background_tasks: BackgroundTa
 def list_languages():
     """Returns all supported language names."""
     return {"supported_languages": supported_languages()}
-@app.post("/status/{job_id}")
+@app.get("/status/{job_id}")
 def status(job_id: str):
     job = r.hgetall(f"audiobook:{job_id}")
     if not job:

@@ -7,32 +7,39 @@ client = Groq(api_key=API_KEY)
 
 
 def generate_show_notes(script: str, language: str = "English") -> dict:
+    lang_instruction = (
+        f"CRITICAL: You MUST write ALL text values in {language}. "
+        f"Every term name, every definition, every finding sentence — ALL in {language}. "
+        f"Do NOT use English for any value in the JSON. Only the JSON keys (key_terms, findings, term, definition) stay in English."
+        if language.lower() != "english"
+        else "Write all content in English."
+    )
 
     prompt = f"""
 You are creating show notes for a podcast episode.
-
+ 
+{lang_instruction}
+ 
 Read the following podcast transcript and extract:
-
+ 
 1. KEY TERMS: The 5 to 8 most important technical or domain-specific terms mentioned.
-   For each term give a plain, one-sentence definition that a listener can understand.
-
+   For each term give a plain, one-sentence definition a listener can understand.
+ 
 2. MAIN FINDINGS: The 4 to 6 most important takeaways or conclusions from the episode.
    Each finding should be one clear sentence.
-
-Return ONLY a valid JSON object in exactly this format, no markdown, no extra text:
+ 
+Return ONLY a valid JSON object in exactly this format — no markdown, no extra text:
 {{
   "key_terms": [
-    {{"term": "term name", "definition": "plain one-sentence definition"}},
+    {{"term": "term name in {language}", "definition": "plain one-sentence definition in {language}"}},
     ...
   ],
   "findings": [
-    "First main finding as a complete sentence.",
+    "First main finding as a complete sentence in {language}.",
     ...
   ]
 }}
-
-Write all content in {language}.
-
+ 
 Transcript:
 {script[:6000]}
 """
@@ -42,7 +49,12 @@ Transcript:
         messages=[
             {
                 "role": "system",
-                "content": "You create structured podcast show notes. Return only valid JSON."
+                "content": (
+                    f"You create structured podcast show notes. "
+                    f"Return only valid JSON. "
+                    f"IMPORTANT: All text content must be written entirely in {language}. "
+                    f"Never use English for values, only for JSON keys."
+                )
             },
             {"role": "user", "content": prompt}
         ],
