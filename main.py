@@ -1,3 +1,4 @@
+import json
 import uuid
 from email.policy import default
 
@@ -9,9 +10,11 @@ import os
 
 from starlette.responses import PlainTextResponse
 
+from chapter_service import generate_chapters, chapters_to_transcript_header
 from language_config import get_language_config, DEFAULT_LANGUAGE, supported_languages
 from pdf_extractor import extract_text
 from podcast_service import generate_podcast_script, clean_podcast_script, DIFFICULTY
+from show_notes_service import generate_show_notes, show_notes_to_text
 from summary_service import summarize_text
 from transcript_service import save_transcript
 from tts_engine import text_to_audiobook, podcast_to_audio
@@ -65,8 +68,18 @@ def process_pdf(pdf_path: str,
 
         full_script = "\n".join(scripts)
 
-        transcript_path = save_transcript(full_script, job_id)
-        r.hset(f"audiobook:{job_id}", mapping={"transcript_path": transcript_path})
+        chapters = generate_chapters(full_script)
+        chaps_json = json.dumps(chapters, ensure_ascii=False)
+
+        show_notes = generate_show_notes(full_script,language=lang_config["llm_name"])
+        show_notes_json = json.dumps(show_notes, ensure_ascii=False)
+
+        chap_header = chapters_to_transcript_header(chapters)
+        show_notes_text = show_notes_to_text(show_notes)
+        transcript_chaps = chap_header + full_script + show_notes_text
+
+        transcript_path = save_transcript(transcript_chaps, job_id)
+        r.hset(f"audiobook:{job_id}", mapping={"transcript_path": transcript_path,"chapters":chaps_json,"show_notes": show_notes_json,})
 
         # 2. Generate audio chunks
         audio_files = podcast_to_audio(full_script, f"audiobooks/{job_id}",host_voice=lang_config["host_voice"],expert_voice=lang_config["expert_voice"])
@@ -81,6 +94,8 @@ def process_pdf(pdf_path: str,
             "final_path": final_audio,
             "length": length,
             "transcript_path": transcript_path,
+            "chapters": chaps_json,
+            "show_notes": show_notes_json,
             "language": language,
             "difficulty": difficulty,
             "debate": str(debate),
@@ -165,6 +180,36 @@ def status(job_id: str):
 #         file_iterator(),
 #         media_type="audio/mpeg"
 #     )
+
+@app.get("/audiobook/{job_id}/chapters")
+def chapters(job_id: str):
+    """
+    Returns a list of all chapters available for this job.
+    :param job_id:
+    :return: index title etc....
+    """
+    job = r.hgetall(f"audiobook:{job_id}")
+    if not job:
+        raise HTTPException(status_code=404, detail="Invalid job ID job not found")
+    if job.get("status") != "ready":
+        raise HTTPException(status_code=404, detail=f"Job status is '{job.get('status')}', not ready yet")
+    chapters_raw = job.get("chapters")
+    if not chapters_raw:
+        raise HTTPException(status_code=404, detail="Invalid job ID job not found")
+    return json.loads(chapters_raw)
+
+@app.get("/audiobook/{job_id}/shownotes")
+def get_show_notes(job_id: str):
+    job = r.hgetall(f"audiobook:{job_id}")
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.get("status") != "ready":
+        raise HTTPException(status_code=404,
+                            detail=f"Job status is '{job.get('status')}', not ready yet")
+    notes_raw = job.get("show_notes")
+    if not notes_raw:
+        raise HTTPException(status_code=404, detail="No show notes found for this job")
+    return json.loads(notes_raw)
 
 @app.get("/play/{job_id}")
 def play_full(job_id: str):
