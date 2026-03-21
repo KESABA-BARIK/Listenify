@@ -162,6 +162,10 @@ async def upload_pdf(file: UploadFile = File(...),background_tasks: BackgroundTa
 @app.get("/languages")
 def list_languages():
     """Returns all supported language names."""
+    try:
+        r.set("health:ping", "ok", ex=300)
+    except Exception:
+        pass
     return {"supported_languages": supported_languages()}
 @app.get("/status/{job_id}")
 def status(job_id: str):
