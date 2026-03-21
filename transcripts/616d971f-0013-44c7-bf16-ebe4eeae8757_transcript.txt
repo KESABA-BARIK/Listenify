@@ -1,0 +1,41 @@
+=== CHAPTERS ===
+00:00  How Listenify works exactly
+01:06  Real world applications today
+02:12  Designing AI-powered workflows
+================
+Host: Welcome to "Tech Talk"! Today, we're joined by Kesaba Chandra Barik, a talented software engineer with expertise in Python, AI, and backend systems. Kesaba, thanks for being on the show. I'm excited to dive into your work and projects.
+Expert: Thanks for having me! I'm excited to share my experiences and projects with your audience.
+Host: Let's start with something I find fascinating - your project Listenify. Can you walk us through what it does? How does it convert research paper PDFs into podcast-style conversations?
+Expert: Absolutely. Listenify uses natural language processing (NLP) and machine learning (ML) to analyze the text from research papers and generate audio-based conversations. It essentially acts as a summarizer, breaking down complex papers into bite-sized conversations with multiple speakers. This is achieved through the use of Python and various NLP libraries like spaCy and NLTK.
+Host: That's amazing! I can imagine this being incredibly useful for researchers and students. How do you think this technology can be applied in real-world scenarios, beyond just research papers?
+Expert: Well, the possibilities are vast. Listenify can be used in e-learning platforms, where students can access complex concepts in a more engaging way. It can also be applied in news summarization, where long-form articles can be condensed into easily digestible audio clips. The key is to make complex information more accessible and user-friendly.
+Host: That's a great point. Your work also involves designing and deploying AI-powered workflows for CRM, recruitment, and outreach processes. Can you tell us more about your experience in this area?
+Expert: Yes, I had the opportunity to work on automation workflows using Python and various APIs. This involved integrating multiple systems to automate tasks such as sourcing, follow-ups, and CRM updates. It's fascinating to see how AI can be used to optimize business processes and streamline workflows.
+Host: That's really interesting. What advice would you give to our listeners who are interested in pursuing a career in AI and ML?
+Expert: I'd say it's essential to start with the basics - understanding the fundamentals of programming, data structures, and algorithms. From there, dive into AI and ML-specific topics like deep learning and NLP. It's also crucial to gain practical experience through projects and experimenting with various libraries and frameworks.
+Host: Great advice, Kesaba. Finally, what's next for you? You're currently working on a persistent key-value store called shradsDB. Can you give us a sneak peek into what you're working on?
+Expert: shradsDB is an exciting project, and I'm excited to share it with the community. It involves implementing an LSM-tree storage engine and designing reader-writer lock-based concurrency control. I'm aiming to create a highly efficient and scalable key-value store that can handle high traffic and support various use cases.
+Host: That sounds like a challenging but rewarding project. We look forward to seeing the results. Kesaba, thanks for joining us today and sharing your expertise with our audience.
+Expert: Thanks for having me! It was a pleasure to share my work and experiences.
+=== SHOW NOTES ===
+
+MAIN FINDINGS
+-------------
+1. Listenify uses NLP and ML to convert research paper PDFs into podcast-style conversations.
+2. The technology has vast possibilities for real-world applications, including e-learning platforms and news summarization.
+3. AI can be used to optimize business processes and streamline workflows by automating tasks and integrating multiple systems.
+4. To pursue a career in AI and ML, it's essential to start with the basics of programming and data structures and gain practical experience through projects and experimenting with various libraries and frameworks.
+5. Kesaba Chandra Barik is working on a persistent key-value store called shradsDB, which involves implementing an LSM-tree storage engine and designing reader-writer lock-based concurrency control.
+
+KEY TERMS
+---------
+• Natural Language Processing (NLP): The use of computer algorithms to process, understand, and generate human language.
+• Machine Learning (ML): A type of artificial intelligence that enables computers to learn from data and improve their performance on a task.
+• Python: A popular programming language used for various tasks, including web development, scientific computing, and data analysis.
+• spaCy: A modern natural language processing library for Python that focuses on performance and ease of use.
+• NLTK: A popular Python library for natural language processing that provides tools for text processing, tokenization, and corpora management.
+• LSM-tree: A type of data storage engine that uses a combination of log-structured merge trees and flash storage to provide high performance and durability.
+• API: An application programming interface that allows different software systems to communicate with each other and exchange data.
+• AI-powered workflows: Automated processes that use artificial intelligence to optimize business operations and streamline tasks.
+
+================

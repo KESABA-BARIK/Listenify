@@ -1,0 +1,40 @@
+=== CHAPTERS ===
+00:00  Designing AI-powered automation workflows
+01:24  Converting research papers to podcast conversations
+02:48  Developing a job recommendation platform
+================
+Episode Title: "Unlocking AI and Automation with Kesaba Chandra Barik"
+Host: Welcome back to "TechTalks"! Today, we have Kesaba Chandra Barik joining us to discuss his expertise in AI, machine learning, and automation. Kesaba, thanks for being on the show!
+Expert: Thanks for having me! I'm excited to share my experiences and insights with your audience.
+Host: Kesaba, let's start with your background. You have a Bachelor of Technology in Computer Science from Puducherry Technological University. Can you tell us a bit about your academic journey and what sparked your interest in software engineering?
+Expert: Sure. I was always fascinated by the way computers can process information and perform tasks autonomously. During my undergraduate studies, I was exposed to various programming languages and technologies, which further solidified my interest in software engineering. My GPA of 8.34/10 (till 6th semester) was a great motivator to continue exploring and learning more.
+Host: That's impressive! During your internship at AgileSoftLabs, you designed and deployed AI-powered automation workflows for CRM, recruitment, and outreach processes. Can you walk us through what that entailed and how you integrated external APIs to automate sourcing and CRM updates?
+Expert: During my internship, I worked on automating various business processes using AI and machine learning. I designed and developed a workflow that integrated external APIs to fetch data from multiple sources, process it, and update the CRM system accordingly. This involved using Python, AI/ML libraries, and backend frameworks like FastAPI. The goal was to streamline the recruitment and outreach processes, reducing manual effort and increasing efficiency.
+Host: That sounds like a fantastic project. You've also worked on several other projects, including Listenify, a Python-based AI pipeline that converts research paper PDFs into podcast-style conversations. Can you tell us more about that project and how it uses AI to generate conversations?
+Expert: Yes, Listenify is an interesting project that I worked on. The idea is to take a research paper in PDF format and convert it into a podcast-style conversation using AI. The pipeline uses natural language processing (NLP) and machine learning to extract key points, identify relationships between concepts, and generate a conversational narrative. This involves using LLM APIs, prompt engineering, and retrieval-augmented generation (RAG) techniques to create a coherent and engaging conversation.
+Host: That's a really cool application of AI! You've also developed a job recommendation platform using FastAPI, Angular, and MLflow. Can you explain how that platform works and what kind of data it uses to provide job recommendations?
+Expert: The job recommendation platform is designed to suggest relevant job opportunities to users based on their skills, experience, and preferences. The platform uses MLflow to train machine learning models on a large dataset of job postings and user profiles. It then uses FastAPI and Angular to build a user-friendly interface that allows users to input their requirements and receive personalized job recommendations. The platform also incorporates data from external sources, such as LinkedIn and Glassdoor, to provide more accurate and up-to-date information.
+Host: That's a great example of using data science and machine learning to solve a real-world problem. Last question: what advice would you give to our audience who are interested in pursuing a career in AI, machine learning, and automation?
+Expert: My advice would be to start by learning the fundamentals of programming, data structures, and algorithms. From there, explore the various applications of AI and machine learning, such as NLP, computer vision, and predictive modelling. Experiment with different libraries and frameworks, and participate in competitions and hackathons to gain practical experience. Finally, stay up-to-date with the latest developments in the field and continuously learn and adapt to new technologies and techniques.
+Host: Thanks, Kesaba, for sharing your insights and experiences with us today! It's been a pleasure having you on the show.
+Expert: Thanks for having me!
+=== SHOW NOTES ===
+
+MAIN FINDINGS
+-------------
+1. AI and automation can be used to streamline business processes and increase efficiency.
+2. Machine learning can be applied to various domains, including natural language processing and computer vision.
+3. The use of external APIs and data from multiple sources can enhance the accuracy and reliability of AI-powered automation workflows.
+4. Continuous learning and adaptation are essential for staying up-to-date with the latest developments in AI and machine learning.
+5. Experimenting with different libraries and frameworks, and participating in competitions and hackathons, can provide valuable practical experience in AI and machine learning.
+
+KEY TERMS
+---------
+• AI: Artificial intelligence refers to the development of computer systems that can perform tasks that typically require human intelligence, such as learning, problem-solving, and decision-making.
+• Machine Learning: Machine learning is a subset of AI that involves training algorithms to learn from data and make predictions or decisions without being explicitly programmed.
+• Automation: Automation refers to the use of technology to automate repetitive or mundane tasks, freeing up human resources for more strategic and creative work.
+• NLP: Natural language processing (NLP) is a subfield of AI that deals with the interaction between computers and human language, enabling computers to understand, interpret, and generate human language.
+• LLM: Large language model (LLM) refers to a type of AI model that is trained on a massive dataset of text and can generate human-like language, often used for tasks such as language translation, text summarization, and conversation generation.
+• MLflow: MLflow is an open-source platform for managing the machine learning lifecycle, including experiment tracking, model deployment, and model serving.
+
+================
