@@ -179,12 +179,12 @@ export default function Home() {
             </div>
 
             {/* Options */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem', marginBottom: '1.5rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
 
               {/* Length */}
               <div>
                 <p style={{ fontSize: '0.72rem', fontFamily: 'JetBrains Mono', color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>Episode Length</p>
-                <div style={{ display: 'flex', gap: 6 }}>
+                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                   {LENGTHS.map(l => (
                     <button key={l.key} type="button" onClick={() => setLength(l.key)} style={{
                       flex: 1, padding: '0.5rem 0.25rem', borderRadius: 8, border: 'none', cursor: 'pointer',
@@ -203,7 +203,7 @@ export default function Home() {
               {/* Difficulty */}
               <div>
                 <p style={{ fontSize: '0.72rem', fontFamily: 'JetBrains Mono', color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>Difficulty</p>
-                <div style={{ display: 'flex', gap: 6 }}>
+                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                   {DIFFS.map(d => (
                     <button key={d.key} type="button" onClick={() => setDiff(d.key)} style={{
                       flex: 1, padding: '0.5rem 0.25rem', borderRadius: 8, border: 'none', cursor: 'pointer',

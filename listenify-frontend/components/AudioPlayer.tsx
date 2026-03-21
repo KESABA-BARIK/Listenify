@@ -120,45 +120,55 @@ export default function AudioPlayer({ jobId, chapters }: Props) {
         </div>
 
         {/* Controls */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            {/* Skip back */}
-            <button onClick={() => skip(-15)} style={{
-              background: 'var(--bg3)', border: 'none', color: 'var(--text-2)',
-              width: 36, height: 36, borderRadius: '50%', cursor: 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: '0.8rem', transition: 'all 0.15s',
-            }} title="Back 15s">⏮ 15</button>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {/* Playback row */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              {/* Skip back */}
+              <button onClick={() => skip(-15)} style={{
+                background: 'var(--bg3)', border: 'none', color: 'var(--text-2)',
+                width: 36, height: 36, borderRadius: '50%', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '0.8rem', transition: 'all 0.15s',
+              }} title="Back 15s">⏮ 15</button>
 
-            {/* Play/Pause */}
-            <button onClick={toggle} style={{
-              background: 'var(--accent)', border: 'none', color: 'white',
-              width: 48, height: 48, borderRadius: '50%', cursor: 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: '1.1rem', transition: 'all 0.15s',
-              boxShadow: '0 0 20px var(--accent-glow)',
-            }}>
-              {playing ? '⏸' : '▶'}
-            </button>
+              {/* Play/Pause */}
+              <button onClick={toggle} style={{
+                background: 'var(--accent)', border: 'none', color: 'white',
+                width: 48, height: 48, borderRadius: '50%', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '1.1rem', transition: 'all 0.15s',
+                boxShadow: '0 0 20px var(--accent-glow)',
+              }}>
+                {playing ? '⏸' : '▶'}
+              </button>
 
-            {/* Skip forward */}
-            <button onClick={() => skip(15)} style={{
-              background: 'var(--bg3)', border: 'none', color: 'var(--text-2)',
-              width: 36, height: 36, borderRadius: '50%', cursor: 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: '0.8rem', transition: 'all 0.15s',
-            }} title="Forward 15s">15 ⏭</button>
+              {/* Skip forward */}
+              <button onClick={() => skip(15)} style={{
+                background: 'var(--bg3)', border: 'none', color: 'var(--text-2)',
+                width: 36, height: 36, borderRadius: '50%', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '0.8rem', transition: 'all 0.15s',
+              }} title="Forward 15s">15 ⏭</button>
+            </div>
+
+            {/* Volume */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: '0.85rem' }}>{volume === 0 ? '🔇' : volume < 0.5 ? '🔉' : '🔊'}</span>
+              <input type="range" min={0} max={1} step={0.05} value={volume} onChange={changeVolume} style={{ width: 72 }} />
+            </div>
           </div>
 
-          {/* Volume */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 120 }}>
-            <span style={{ fontSize: '0.85rem' }}>{volume === 0 ? '🔇' : volume < 0.5 ? '🔉' : '🔊'}</span>
-            <input type="range" min={0} max={1} step={0.05} value={volume} onChange={changeVolume} style={{ width: 80 }} />
-          </div>
-
-          {/* Download */}
-          <a href={downloadUrl(jobId)} download className="btn-ghost" style={{ fontSize: '0.78rem' }}>
-            ↓ MP3
+          {/* Download row — full width, clearly visible */}
+          <a href={downloadUrl(jobId)} download style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+            padding: '10px 16px', borderRadius: 10,
+            background: 'var(--accent-subtle)', border: '1px solid rgba(124,106,247,0.3)',
+            color: 'var(--accent-2)', textDecoration: 'none',
+            fontSize: '0.875rem', fontFamily: 'Inter', fontWeight: 500,
+            transition: 'all 0.15s',
+          }}>
+            ↓ Download MP3
           </a>
         </div>
       </div>
