@@ -6,7 +6,7 @@ def save_transcript(script: str, job_id: str, directory: str = "transcripts") ->
        Returns the path to the saved file.
        """
     os.makedirs(directory, exist_ok=True)
-    transcript_path = f"transcripts/{job_id}_transcript.txt"
+    transcript_path = os.path.join(directory, f"{job_id}_transcript.txt")
 
     with open(transcript_path, "w", encoding="utf-8") as f:
         f.write(script)

@@ -89,14 +89,14 @@ def process_pdf(pdf_path: str,
         show_notes_text = show_notes_to_text(show_notes)
         transcript_chaps = chap_header + full_script + show_notes_text
 
-        transcript_path = save_transcript(transcript_chaps, job_id)
+        transcript_path = save_transcript(transcript_chaps, job_id, TRANSCRIPTS_DIR)
         r.hset(f"audiobook:{job_id}", mapping={"transcript_path": transcript_path,"chapters":chaps_json,"show_notes": show_notes_json,})
 
         # 2. Generate audio chunks
-        audio_files = podcast_to_audio(full_script, f"audiobooks/{job_id}",host_voice=lang_config["host_voice"],expert_voice=lang_config["expert_voice"])
+        audio_files = podcast_to_audio(full_script, os.path.join(AUDIOBOOKS_DIR, job_id),host_voice=lang_config["host_voice"],expert_voice=lang_config["expert_voice"])
 
         # 3. Merge
-        final_audio = f"audiobooks/{job_id}_full.mp3"
+        final_audio = os.path.join(AUDIOBOOKS_DIR, f"{job_id}_full.mp3")
         merge_mp3_files(audio_files, final_audio)
 
         # 4. Mark completed
@@ -138,7 +138,7 @@ async def upload_pdf(file: UploadFile = File(...),background_tasks: BackgroundTa
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     job_id = str(uuid.uuid4())
-    pdf_path = f"uploads/{job_id}_{file.filename}"
+    pdf_path = os.path.join(UPLOADS_DIR, f"{job_id}_{file.filename}")
 
     with open(pdf_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
