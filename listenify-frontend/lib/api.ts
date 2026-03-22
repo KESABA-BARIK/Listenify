@@ -27,3 +27,21 @@ export const getLanguages   = ()           => fetch(`${BASE}/languages`).then(r 
 export const streamUrl       = (id: string) => `${BASE}/audiobook/${id}/stream`
 export const downloadUrl     = (id: string) => `${BASE}/audiobook/${id}/download`
 export const transcriptDlUrl = (id: string) => `${BASE}/audiobook/${id}/transcript/download`
+
+export async function uploadURL(url: string, opts: {
+  length: string; language: string; difficulty: string; debate: boolean
+}) {
+  const form = new FormData()
+  form.append('url', url)
+  form.append('length', opts.length)
+  form.append('language', opts.language)
+  form.append('difficulty', opts.difficulty)
+  form.append('debate', String(opts.debate))
+  const res = await fetch(`${BASE}/upload-url`, { method: 'POST', body: form })
+  if (!res.ok) {
+    let msg = 'Failed to process URL'
+    try { msg = (await res.json()).detail ?? msg } catch {}
+    throw new Error(msg)
+  }
+  return res.json()
+}

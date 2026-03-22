@@ -2,7 +2,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Nav from '@/components/Nav'
-import { uploadPDF, getLanguages } from '@/lib/api'
+import { uploadPDF, uploadURL, getLanguages } from '@/lib/api'
 import { useScrollReveal } from '@/lib/useScrollReveal'
 
 const LENGTHS = [
@@ -45,6 +45,8 @@ export default function Home() {
   const [loading,    setLoading]   = useState(false)
   const [error,      setError]     = useState('')
   const [dragging,   setDragging]  = useState(false)
+  const [inputTab,   setInputTab]  = useState<'pdf' | 'url'>('pdf')
+  const [urlInput,   setUrlInput]  = useState('')
 
   const formRef    = useScrollReveal({ delay: 0 })
   const featRef    = useScrollReveal({ delay: 0 })
@@ -69,10 +71,19 @@ export default function Home() {
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
-    if (!file) { setError('Please select a PDF file.'); return }
     setLoading(true); setError('')
     try {
-      const { job_id } = await uploadPDF(file, { length, language, difficulty, debate })
+      const opts = { length, language, difficulty, debate }
+      let job_id: string
+      if (inputTab === 'url') {
+        if (!urlInput.trim()) { setError('Please enter a URL.'); setLoading(false); return }
+        const res = await uploadURL(urlInput.trim(), opts)
+        job_id = res.job_id
+      } else {
+        if (!file) { setError('Please select a PDF file.'); setLoading(false); return }
+        const res = await uploadPDF(file, opts)
+        job_id = res.job_id
+      }
       router.push(`/job/${job_id}`)
     } catch (err: any) {
       setError(err.message || 'Upload failed.')
@@ -173,52 +184,111 @@ export default function Home() {
           </div>
 
           <form onSubmit={submit}>
-            {/* Dropzone — sharp corners */}
-            <div
-              className={`dropzone ${dragging ? 'drag' : ''} ${file ? 'has-file' : ''}`}
-              style={{ marginBottom: 20 }}
-              onClick={() => fileRef.current?.click()}
-              onDragOver={e => { e.preventDefault(); setDragging(true) }}
-              onDragLeave={() => setDragging(false)}
-              onDrop={onDrop}
-            >
-              <input ref={fileRef} type="file" accept=".pdf" style={{ display: 'none' }}
-                onChange={e => { setFile(e.target.files?.[0] ?? null); setError('') }} />
-
-              {file ? (
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, marginBottom: 5 }}>
-                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                      <path d="M12 4L5.5 11L2 7.5" stroke="var(--success)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                    <span style={{ fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: 14, color: 'var(--body-text)' }}>
-                      {file.name}
-                    </span>
-                  </div>
-                  <p style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--body-text-3)' }}>
-                    {(file.size / 1024 / 1024).toFixed(2)} MB ·{' '}
-                    <button type="button" onClick={e => { e.stopPropagation(); setFile(null) }}
-                      style={{ background: 'none', border: 'none', color: 'var(--body-text-3)', cursor: 'pointer', fontSize: 11, textDecoration: 'underline' }}>
-                      remove
-                    </button>
-                  </p>
-                </div>
-              ) : (
-                <div>
-                  <svg width="30" height="30" viewBox="0 0 30 30" fill="none" style={{ margin: '0 auto 10px', display: 'block' }}>
-                    <rect x="4" y="2" width="17" height="24" rx="2" stroke="var(--body-border-2)" strokeWidth="1.4"/>
-                    <path d="M10 2v7h11" stroke="var(--body-border-2)" strokeWidth="1.4" strokeLinejoin="round"/>
-                    <path d="M21 20v7M18 24l3 3 3-3" stroke="var(--accent)" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                  <p style={{ fontFamily: 'var(--font-sans)', fontWeight: 500, fontSize: 14, color: 'var(--body-text)', marginBottom: 3 }}>
-                    Drop a PDF, or <span style={{ color: 'var(--accent)', textDecoration: 'underline', textUnderlineOffset: 2 }}>browse files</span>
-                  </p>
-                  <p style={{ fontFamily: 'var(--font-sans)', fontSize: 13, color: 'var(--body-text-3)' }}>
-                    Research papers, theses, reports, whitepapers
-                  </p>
-                </div>
-              )}
+            {/* Tab switcher */}
+            <div style={{
+              display: 'flex', marginBottom: 16,
+              border: '1px solid var(--body-border)',
+              borderRadius: 'var(--r-md)', overflow: 'hidden',
+              background: 'var(--body-bg)',
+            }}>
+              {(['pdf', 'url'] as const).map(tab => (
+                <button key={tab} type="button"
+                  onClick={() => { setInputTab(tab); setError('') }}
+                  style={{
+                    flex: 1, padding: '8px 12px',
+                    fontFamily: 'var(--font-sans)', fontSize: 13, fontWeight: 500,
+                    border: 'none', cursor: 'pointer',
+                    borderRight: tab === 'pdf' ? '1px solid var(--body-border)' : 'none',
+                    background: inputTab === tab ? 'var(--body-surface)' : 'transparent',
+                    color: inputTab === tab ? 'var(--body-text)' : 'var(--body-text-3)',
+                    transition: 'all 120ms',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                  }}>
+                  {tab === 'pdf' ? (
+                    <><svg width="12" height="12" viewBox="0 0 12 12" fill="none"><rect x="1" y="0.5" width="8" height="11" rx="1" stroke="currentColor" strokeWidth="1.2"/><path d="M3 0.5v4h6" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/></svg> PDF file</>
+                  ) : (
+                    <><svg width="12" height="12" viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="5" stroke="currentColor" strokeWidth="1.2"/><path d="M1 6h10M6 1c-1.5 2-1.5 8 0 10M6 1c1.5 2 1.5 8 0 10" stroke="currentColor" strokeWidth="1.2"/></svg> URL</>
+                  )}
+                </button>
+              ))}
             </div>
+
+            {/* PDF dropzone */}
+            {inputTab === 'pdf' && (
+              <div
+                className={`dropzone ${dragging ? 'drag' : ''} ${file ? 'has-file' : ''}`}
+                style={{ marginBottom: 20 }}
+                onClick={() => fileRef.current?.click()}
+                onDragOver={e => { e.preventDefault(); setDragging(true) }}
+                onDragLeave={() => setDragging(false)}
+                onDrop={onDrop}
+              >
+                <input ref={fileRef} type="file" accept=".pdf" style={{ display: 'none' }}
+                  onChange={e => { setFile(e.target.files?.[0] ?? null); setError('') }} />
+                {file ? (
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, marginBottom: 5 }}>
+                      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                        <path d="M12 4L5.5 11L2 7.5" stroke="var(--success)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                      <span style={{ fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: 14, color: 'var(--body-text)' }}>{file.name}</span>
+                    </div>
+                    <p style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--body-text-3)' }}>
+                      {(file.size / 1024 / 1024).toFixed(2)} MB ·{' '}
+                      <button type="button" onClick={e => { e.stopPropagation(); setFile(null) }}
+                        style={{ background: 'none', border: 'none', color: 'var(--body-text-3)', cursor: 'pointer', fontSize: 11, textDecoration: 'underline' }}>
+                        remove
+                      </button>
+                    </p>
+                  </div>
+                ) : (
+                  <div>
+                    <svg width="30" height="30" viewBox="0 0 30 30" fill="none" style={{ margin: '0 auto 10px', display: 'block' }}>
+                      <rect x="4" y="2" width="17" height="24" rx="2" stroke="var(--body-border-2)" strokeWidth="1.4"/>
+                      <path d="M10 2v7h11" stroke="var(--body-border-2)" strokeWidth="1.4" strokeLinejoin="round"/>
+                      <path d="M21 20v7M18 24l3 3 3-3" stroke="var(--accent)" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                    <p style={{ fontFamily: 'var(--font-sans)', fontWeight: 500, fontSize: 14, color: 'var(--body-text)', marginBottom: 3 }}>
+                      Drop a PDF, or <span style={{ color: 'var(--accent)', textDecoration: 'underline', textUnderlineOffset: 2 }}>browse files</span>
+                    </p>
+                    <p style={{ fontFamily: 'var(--font-sans)', fontSize: 13, color: 'var(--body-text-3)' }}>
+                      Research papers, theses, reports, whitepapers
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* URL input */}
+            {inputTab === 'url' && (
+              <div style={{ marginBottom: 20 }}>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    type="url"
+                    value={urlInput}
+                    onChange={e => { setUrlInput(e.target.value); setError('') }}
+                    placeholder="https://arxiv.org/abs/2301.07041 or any article URL"
+                    className="input"
+                    style={{ paddingLeft: 36 }}
+                  />
+                  <svg style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--body-text-3)', pointerEvents: 'none' }}
+                    width="13" height="13" viewBox="0 0 13 13" fill="none">
+                    <circle cx="6.5" cy="6.5" r="5.5" stroke="currentColor" strokeWidth="1.2"/>
+                    <path d="M1 6.5h11M6.5 1c-1.5 2-1.5 8 0 10M6.5 1c1.5 2 1.5 8 0 10" stroke="currentColor" strokeWidth="1.2"/>
+                  </svg>
+                </div>
+                <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+                  {['arxiv.org/abs/...', 'Wikipedia', 'Blog post'].map(hint => (
+                    <span key={hint} style={{
+                      fontFamily: 'var(--font-mono)', fontSize: 10,
+                      padding: '2px 7px', borderRadius: 'var(--r-sm)',
+                      border: '1px solid var(--body-border)',
+                      color: 'var(--body-text-3)', background: 'var(--body-bg)',
+                    }}>{hint}</span>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Options */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(255px, 1fr))', gap: 12, marginBottom: 12 }}>
@@ -297,7 +367,7 @@ export default function Home() {
                   <span style={{ width:14, height:14, border:'1.5px solid rgba(255,255,255,0.3)', borderTopColor:'#fff', borderRadius:'50%', display:'inline-block', animation:'spin 0.65s linear infinite' }} />
                   Uploading…
                 </>
-              ) : 'Generate podcast'}
+              ) : inputTab === 'url' ? 'Convert URL to podcast' : 'Generate podcast'}
             </button>
           </form>
         </div>
