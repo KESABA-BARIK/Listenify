@@ -22,6 +22,8 @@ from tts_engine import text_to_audiobook, podcast_to_audio
 from audio_merger import merge_mp3_files
 import redis
 
+from url_extractor import extract_text_from_url
+
 REDIS_URL = os.getenv("REDIS_URL")
 if REDIS_URL:
     r = redis.from_url(REDIS_URL, decode_responses=True)
@@ -118,6 +120,90 @@ def process_pdf(pdf_path: str,
             "error": str(e)
         })
 
+
+def process_url(
+        url: str,
+        job_id: str,
+        length: str = "full",
+        language: str = "english",
+        difficulty: str = DIFFICULTY,
+        debate: bool = False,
+):
+    try:
+        r.hset(f"audiobook:{job_id}", mapping={"status": "processing"})
+
+        lang_config = get_language_config(language)
+
+        # 1. Extract text from URL
+        text = extract_text_from_url(url)
+
+        # 2. Summarise
+        summaries = summarize_text(text, length=length)
+
+        # 3. Generate scripts
+        scripts = []
+        for summary_chunk in summaries:
+            script = generate_podcast_script(
+                summary_chunk,
+                length=length,
+                language=lang_config["llm_name"],
+                difficulty=difficulty,
+                debate=debate,
+            )
+            script = clean_podcast_script(script)
+            scripts.append(script)
+
+        full_script = "\n".join(scripts)
+
+        # 4. Chapters + show notes
+        chapters = generate_chapters(full_script, language=lang_config["llm_name"])
+        show_notes = generate_show_notes(full_script, language=lang_config["llm_name"])
+        chapters_json = json.dumps(chapters, ensure_ascii=False)
+        sn_json = json.dumps(show_notes, ensure_ascii=False)
+
+        # 5. Transcript
+        chapter_header = chapters_to_transcript_header(chapters)
+        show_notes_text = show_notes_to_text(show_notes)
+        full_transcript = chapter_header + full_script + show_notes_text
+        transcript_path = save_transcript(full_transcript, job_id, TRANSCRIPTS_DIR)
+
+        r.hset(f"audiobook:{job_id}", mapping={
+            "transcript_path": transcript_path,
+            "chapters": chapters_json,
+            "show_notes": sn_json,
+        })
+
+        # 6. Audio
+        audio_files = podcast_to_audio(
+            full_script,
+            os.path.join(AUDIOBOOKS_DIR, job_id),
+            host_voice=lang_config["host_voice"],
+            expert_voice=lang_config["expert_voice"],
+        )
+
+        # 7. Merge
+        final_audio = os.path.join(AUDIOBOOKS_DIR, f"{job_id}_full.mp3")
+        merge_mp3_files(audio_files, final_audio)
+
+        r.hset(f"audiobook:{job_id}", mapping={
+            "status": "ready",
+            "final_path": final_audio,
+            "transcript_path": transcript_path,
+            "chapters": chapters_json,
+            "show_notes": sn_json,
+            "length": length,
+            "language": language,
+            "difficulty": difficulty,
+            "debate": str(debate),
+            "source_url": url,
+        })
+
+    except Exception as e:
+        r.hset(f"audiobook:{job_id}", mapping={
+            "status": "failed",
+            "error": str(e)
+        })
+
 @app.post("/upload")
 async def upload_pdf(file: UploadFile = File(...),background_tasks: BackgroundTasks = BackgroundTasks(), length: str=Form(default="full"),
                      language: str = Form(default=DEFAULT_LANGUAGE),
@@ -143,12 +229,13 @@ async def upload_pdf(file: UploadFile = File(...),background_tasks: BackgroundTa
     with open(pdf_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
-    r.hset(f"audiobook:{job_id}", mapping=
-    {"status": "uploading",
-     "length":length,
-     "language":language,
-     "difficulty":difficulty,
-     "debate":str(debate),})
+    r.hset(f"audiobook:{job_id}", mapping={
+        "status": "uploading",
+        "length":length,
+        "language":language,
+        "difficulty":difficulty,
+        "debate":str(debate),
+    })
     background_tasks.add_task(process_pdf, pdf_path, job_id, length,language, difficulty, debate)
 
     return {
@@ -159,6 +246,58 @@ async def upload_pdf(file: UploadFile = File(...),background_tasks: BackgroundTa
         "difficulty": difficulty,
         "debate": str(debate),
     }
+
+
+@app.post("/upload-url")
+async def upload_url(
+        background_tasks: BackgroundTasks = BackgroundTasks(),
+        url: str = Form(...),
+        length: str = Form(default="full"),
+        language: str = Form(default=DEFAULT_LANGUAGE),
+        difficulty: str = Form(default=DIFFICULTY),
+        debate: bool = Form(default=False),
+):
+    if length not in VALID_LENGTHS:
+        raise HTTPException(status_code=400,
+                            detail=f"Invalid length. Must be one of: {', '.join(VALID_LENGTHS)}")
+    if difficulty not in diff:
+        raise HTTPException(status_code=400,
+                            detail=f"Invalid difficulty. Must be one of: {', '.join(diff)}")
+    try:
+        get_language_config(language)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    # Validate URL looks reasonable before queueing
+    url = url.strip()
+    if not url or not ('.' in url):
+        raise HTTPException(status_code=400, detail="Please enter a valid URL.")
+
+    job_id = str(uuid.uuid4())
+
+    r.hset(f"audiobook:{job_id}", mapping={
+        "status": "uploading",
+        "length": length,
+        "language": language,
+        "difficulty": difficulty,
+        "debate": str(debate),
+        "source_url": url,
+    })
+
+    background_tasks.add_task(
+        process_url, url, job_id, length, language, difficulty, debate
+    )
+
+    return {
+        "job_id": job_id,
+        "status": "started",
+        "length": length,
+        "language": language,
+        "difficulty": difficulty,
+        "debate": debate,
+        "source_url": url,
+    }
+
 @app.get("/languages")
 def list_languages():
     """Returns all supported language names."""
