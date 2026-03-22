@@ -5,13 +5,17 @@ import { streamUrl, downloadUrl } from '@/lib/api'
 interface Chapter { index: number; title: string; timestamp: string; start_seconds: number }
 interface Props { jobId: string; chapters: Chapter[] }
 
+function fmt(s: number) {
+  const m = Math.floor(s / 60), sec = Math.floor(s % 60)
+  return `${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`
+}
+
 export default function AudioPlayer({ jobId, chapters }: Props) {
   const audioRef = useRef<HTMLAudioElement>(null)
-  const [playing, setPlaying]   = useState(false)
-  const [current, setCurrent]   = useState(0)
+  const [playing,  setPlaying]  = useState(false)
+  const [current,  setCurrent]  = useState(0)
   const [duration, setDuration] = useState(0)
-  const [activeChapter, setActive] = useState(0)
-  const [volume, setVolume]     = useState(1)
+  const [activeChap, setActive] = useState(0)
 
   useEffect(() => {
     const a = audioRef.current; if (!a) return
@@ -32,173 +36,104 @@ export default function AudioPlayer({ jobId, chapters }: Props) {
     }
   }, [chapters])
 
-  function toggle() {
-    const a = audioRef.current; if (!a) return
-    playing ? a.pause() : a.play(); setPlaying(!playing)
-  }
-
-  function skip(sec: number) {
-    const a = audioRef.current; if (!a) return
-    a.currentTime = Math.max(0, Math.min(duration, a.currentTime + sec))
-  }
-
-  function seek(e: React.ChangeEvent<HTMLInputElement>) {
-    const a = audioRef.current; if (!a) return
-    a.currentTime = Number(e.target.value)
-  }
-
-  function seekToChapter(sec: number) {
-    const a = audioRef.current; if (!a) return
-    a.currentTime = sec; a.play(); setPlaying(true)
-  }
-
-  function changeVolume(e: React.ChangeEvent<HTMLInputElement>) {
-    const v = Number(e.target.value)
-    setVolume(v)
-    if (audioRef.current) audioRef.current.volume = v
-  }
-
-  function fmt(s: number) {
-    const m = Math.floor(s / 60), sec = Math.floor(s % 60)
-    return `${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`
-  }
+  const toggle = () => { const a = audioRef.current!; playing ? a.pause() : a.play(); setPlaying(!playing) }
+  const skip   = (s: number) => { audioRef.current!.currentTime = Math.max(0, Math.min(duration, audioRef.current!.currentTime + s)) }
+  const seek   = (e: React.ChangeEvent<HTMLInputElement>) => { audioRef.current!.currentTime = +e.target.value }
+  const jumpTo = (sec: number) => { audioRef.current!.currentTime = sec; audioRef.current!.play(); setPlaying(true) }
 
   const progress = duration > 0 ? (current / duration) * 100 : 0
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <audio ref={audioRef} src={streamUrl(jobId)} preload="metadata" />
 
-      {/* Main player card */}
-      <div className="glass" style={{ borderRadius: 16, padding: '1.75rem', position: 'relative', overflow: 'hidden' }}>
+      {/* ── Player ── */}
+      <div className="card" style={{ padding: '20px' }}>
 
-        {/* Background glow */}
-        <div style={{
-          position: 'absolute', top: -40, right: -40, width: 200, height: 200,
-          background: 'radial-gradient(circle, rgba(124,106,247,0.12) 0%, transparent 70%)',
-          pointerEvents: 'none',
-        }} />
-
-        {/* Now playing label */}
+        {/* Now playing */}
         {chapters.length > 0 && (
-          <div style={{ marginBottom: '1.25rem' }}>
-            <p style={{ fontSize: '0.7rem', fontFamily: 'JetBrains Mono', color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>
-              Now Playing
-            </p>
-            <p style={{ fontFamily: 'Syne', fontWeight: 600, fontSize: '1rem', color: 'var(--accent-2)' }}>
-              {chapters[activeChapter]?.title ?? 'Episode'}
+          <div style={{ marginBottom: 16, paddingBottom: 16, borderBottom: '1px solid var(--body-border)' }}>
+            <p className="section-label" style={{ marginBottom: 3 }}>Now playing</p>
+            <p style={{
+              fontFamily: 'var(--font-serif)', fontStyle: 'italic',
+              fontSize: 16, color: 'var(--body-text)', lineHeight: 1.4,
+            }}>
+              {chapters[activeChap]?.title ?? 'Episode'}
             </p>
           </div>
         )}
 
-        {/* Waveform */}
-        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 48, marginBottom: '1.25rem' }}>
-          {Array.from({ length: 52 }).map((_, i) => {
-            const h = 20 + Math.abs(Math.sin(i * 0.5 + 1) * 22 + Math.cos(i * 0.3) * 14)
-            const isPlayed = (i / 52) * 100 < progress
-            return (
-              <div key={i} className="wave-bar" style={{
-                flex: 1, borderRadius: 2,
-                height: `${h}%`,
-                background: isPlayed ? 'var(--accent)' : 'var(--bg3)',
-                transition: 'background 0.1s',
-                animationDelay: `${i * 0.03}s`,
-                animationPlayState: playing ? 'running' : 'paused',
-                boxShadow: isPlayed ? '0 0 4px var(--accent-glow)' : 'none',
-              }} />
-            )
-          })}
+        {/* Progress */}
+        <div style={{ marginBottom: 16 }}>
+          <div className="progress-track" style={{ marginBottom: 8, cursor: 'pointer', height: 3, position: 'relative' }}
+            onClick={e => {
+              const rect = e.currentTarget.getBoundingClientRect()
+              const pct  = (e.clientX - rect.left) / rect.width
+              if (audioRef.current) audioRef.current.currentTime = pct * duration
+            }}>
+            <div className="progress-fill" style={{ width: `${progress}%` }} />
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--body-text-3)' }}>{fmt(current)}</span>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--body-text-3)' }}>{fmt(duration)}</span>
+          </div>
         </div>
 
         {/* Scrubber */}
-        <div style={{ marginBottom: '1.25rem' }}>
-          <input type="range" min={0} max={duration || 100} value={current} step={1} onChange={seek} style={{ marginBottom: 6 }} />
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', fontFamily: 'JetBrains Mono', color: 'var(--text-3)' }}>
-            <span>{fmt(current)}</span>
-            <span>{fmt(duration)}</span>
-          </div>
-        </div>
+        <input type="range" min={0} max={duration || 100} value={current} step={1}
+          onChange={seek} style={{ marginBottom: 16 }} />
 
         {/* Controls */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {/* Playback row */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              {/* Skip back */}
-              <button onClick={() => skip(-15)} style={{
-                background: 'var(--bg3)', border: 'none', color: 'var(--text-2)',
-                width: 36, height: 36, borderRadius: '50%', cursor: 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: '0.8rem', transition: 'all 0.15s',
-              }} title="Back 15s">⏮ 15</button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button onClick={() => skip(-15)} className="btn btn-ghost btn-sm"
+            style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--body-text-3)' }}>
+            −15s
+          </button>
 
-              {/* Play/Pause */}
-              <button onClick={toggle} style={{
-                background: 'var(--accent)', border: 'none', color: 'white',
-                width: 48, height: 48, borderRadius: '50%', cursor: 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: '1.1rem', transition: 'all 0.15s',
-                boxShadow: '0 0 20px var(--accent-glow)',
-              }}>
-                {playing ? '⏸' : '▶'}
-              </button>
+          <button onClick={toggle} className="btn btn-primary"
+            style={{ width: 38, height: 38, padding: 0, borderRadius: '50%', flexShrink: 0 }}>
+            {playing
+              ? <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor"><rect x="1.5" y="1" width="3.5" height="10" rx="1"/><rect x="7" y="1" width="3.5" height="10" rx="1"/></svg>
+              : <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" style={{ marginLeft: 1 }}><path d="M2.5 1.5l8 4.5-8 4.5V1.5z"/></svg>
+            }
+          </button>
 
-              {/* Skip forward */}
-              <button onClick={() => skip(15)} style={{
-                background: 'var(--bg3)', border: 'none', color: 'var(--text-2)',
-                width: 36, height: 36, borderRadius: '50%', cursor: 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: '0.8rem', transition: 'all 0.15s',
-              }} title="Forward 15s">15 ⏭</button>
-            </div>
+          <button onClick={() => skip(15)} className="btn btn-ghost btn-sm"
+            style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--body-text-3)' }}>
+            +15s
+          </button>
 
-            {/* Volume */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ fontSize: '0.85rem' }}>{volume === 0 ? '🔇' : volume < 0.5 ? '🔉' : '🔊'}</span>
-              <input type="range" min={0} max={1} step={0.05} value={volume} onChange={changeVolume} style={{ width: 72 }} />
-            </div>
-          </div>
+          <div style={{ flex: 1 }} />
 
-          {/* Download row — full width, clearly visible */}
-          <a href={downloadUrl(jobId)} download style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-            padding: '10px 16px', borderRadius: 10,
-            background: 'var(--accent-subtle)', border: '1px solid rgba(124,106,247,0.3)',
-            color: 'var(--accent-2)', textDecoration: 'none',
-            fontSize: '0.875rem', fontFamily: 'Inter', fontWeight: 500,
-            transition: 'all 0.15s',
-          }}>
-            ↓ Download MP3
+          <a href={downloadUrl(jobId)} download className="btn btn-secondary btn-sm">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+              <path d="M6 1v7.5M3.5 6.5L6 9l2.5-2.5M1.5 11h9" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            Download
           </a>
         </div>
       </div>
 
-      {/* Chapters */}
+      {/* ── Chapters ── */}
       {chapters.length > 0 && (
-        <div className="glass" style={{ borderRadius: 16, overflow: 'hidden' }}>
-          <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid var(--border)' }}>
-            <p style={{ fontSize: '0.72rem', fontFamily: 'JetBrains Mono', color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-              Chapters — {chapters.length}
-            </p>
+        <div className="card-flat" style={{ overflow: 'hidden' }}>
+          <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--body-border)', background: 'var(--body-bg)' }}>
+            <p className="section-label">Chapters · {chapters.length}</p>
           </div>
           {chapters.map((ch, i) => (
-            <button key={ch.index} onClick={() => seekToChapter(ch.start_seconds)} style={{
-              width: '100%', textAlign: 'left', padding: '0.85rem 1.25rem',
-              background: i === activeChapter ? 'rgba(124,106,247,0.08)' : 'transparent',
-              border: 'none', borderBottom: i < chapters.length - 1 ? '1px solid var(--border)' : 'none',
-              cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '1rem',
-              transition: 'background 0.15s',
-            }}>
-              <span style={{ fontFamily: 'JetBrains Mono', fontSize: '0.72rem', color: 'var(--text-3)', minWidth: 36 }}>
-                {ch.timestamp}
-              </span>
+            <button key={ch.index} onClick={() => jumpTo(ch.start_seconds)}
+              className={`chapter-row ${i === activeChap ? 'active' : ''}`}>
               <span style={{
-                fontFamily: 'Inter', fontSize: '0.875rem', fontWeight: 500,
-                color: i === activeChapter ? 'var(--accent-2)' : 'var(--text)',
-              }}>
-                {i === activeChapter && <span style={{ marginRight: 6, fontSize: '0.6rem' }}>▶</span>}
-                {ch.title}
-              </span>
+                fontFamily: 'var(--font-mono)', fontSize: 11,
+                color: i === activeChap ? 'var(--accent)' : 'var(--body-text-3)',
+                minWidth: 34, flexShrink: 0,
+              }}>{ch.timestamp}</span>
+              <span style={{
+                fontFamily: 'var(--font-sans)', fontSize: 13.5,
+                fontWeight: i === activeChap ? 500 : 400,
+                color: i === activeChap ? 'var(--accent-text)' : 'var(--body-text-2)',
+                lineHeight: 1.4,
+              }}>{ch.title}</span>
             </button>
           ))}
         </div>

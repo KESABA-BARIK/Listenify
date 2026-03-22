@@ -1,282 +1,345 @@
 'use client'
 import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
+import Nav from '@/components/Nav'
 import { uploadPDF, getLanguages } from '@/lib/api'
+import { useScrollReveal } from '@/lib/useScrollReveal'
 
 const LENGTHS = [
-  { key: 'brief',    label: 'Brief',    desc: '~5 min' },
-  { key: 'standard', label: 'Standard', desc: '~15 min' },
-  { key: 'full',     label: 'Full',     desc: 'Complete' },
+  { key: 'brief',    label: 'Brief',    hint: '~5 min' },
+  { key: 'standard', label: 'Standard', hint: '~15 min' },
+  { key: 'full',     label: 'Full',     hint: 'Complete' },
 ]
 
 const DIFFS = [
-  { key: 'beginner',     label: 'Beginner',     desc: 'Plain language' },
-  { key: 'intermediate', label: 'Intermediate', desc: 'Balanced depth' },
-  { key: 'advanced',     label: 'Advanced',     desc: 'Expert level' },
+  { key: 'beginner',     label: 'Intro',    hint: 'Plain' },
+  { key: 'intermediate', label: 'Standard', hint: 'Balanced' },
+  { key: 'advanced',     label: 'Expert',   hint: 'Deep' },
+]
+
+const FEATURES = [
+  { icon: '📍', label: 'Chapter markers',  desc: 'AI-generated titles from your content. Navigate the episode like a book.' },
+  { icon: '📋', label: 'Show notes',       desc: 'Key terms defined. Main findings summarised. Ready to share.' },
+  { icon: '📝', label: 'Full transcript',  desc: 'Every word, speaker-labelled and downloadable as plain text.' },
+  { icon: '🌐', label: '8 languages',      desc: 'Tamil, Hindi, Spanish, French, German, Arabic, Telugu, English.' },
+  { icon: '🎯', label: 'Difficulty dial',  desc: 'Plain introductions to expert-level technical discussions.' },
+  { icon: '⚡', label: 'Debate mode',      desc: 'Host challenges the expert, probes limitations, plays devil\'s advocate.' },
+]
+
+const STATS = [
+  { val: '8',      unit: 'Languages',       icon: '🌐', color: '#10b981' },
+  { val: '3',      unit: 'Length modes',    icon: '⏱',  color: '#3b82f6' },
+  { val: '~2 min', unit: 'Avg generation',  icon: '⚡', color: '#f59e0b' },
 ]
 
 export default function Home() {
-  const router = useRouter()
+  const router  = useRouter()
   const fileRef = useRef<HTMLInputElement>(null)
-  const [file, setFile]         = useState<File | null>(null)
-  const [length, setLength]     = useState('standard')
-  const [language, setLanguage] = useState('english')
-  const [difficulty, setDiff]   = useState('intermediate')
-  const [debate, setDebate]     = useState(false)
-  const [languages, setLangs]   = useState<string[]>(['english'])
-  const [loading, setLoading]   = useState(false)
-  const [error, setError]       = useState('')
-  const [dragging, setDragging] = useState(false)
+
+  const [file,       setFile]      = useState<File | null>(null)
+  const [length,     setLength]    = useState('standard')
+  const [language,   setLanguage]  = useState('english')
+  const [difficulty, setDiff]      = useState('intermediate')
+  const [debate,     setDebate]    = useState(false)
+  const [languages,  setLangs]     = useState<string[]>(['english'])
+  const [loading,    setLoading]   = useState(false)
+  const [error,      setError]     = useState('')
+  const [dragging,   setDragging]  = useState(false)
+
+  const formRef    = useScrollReveal({ delay: 0 })
+  const featRef    = useScrollReveal({ delay: 0 })
+  const feat0      = useScrollReveal({ delay: 0 })
+  const feat1      = useScrollReveal({ delay: 60 })
+  const feat2      = useScrollReveal({ delay: 120 })
+  const feat3      = useScrollReveal({ delay: 40 })
+  const feat4      = useScrollReveal({ delay: 100 })
+  const feat5      = useScrollReveal({ delay: 160 })
+  const featRefs   = [feat0, feat1, feat2, feat3, feat4, feat5]
 
   useEffect(() => {
     getLanguages().then(d => setLangs(d.supported_languages))
   }, [])
 
-  function handleDrop(e: React.DragEvent) {
+  function onDrop(e: React.DragEvent) {
     e.preventDefault(); setDragging(false)
     const f = e.dataTransfer.files[0]
-    if (f?.type === 'application/pdf') setFile(f)
-    else setError('Please drop a PDF file.')
+    if (f?.type === 'application/pdf') { setFile(f); setError('') }
+    else setError('Only PDF files are supported.')
   }
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function submit(e: React.FormEvent) {
     e.preventDefault()
-    if (!file) { setError('Select a PDF first.'); return }
+    if (!file) { setError('Please select a PDF file.'); return }
     setLoading(true); setError('')
     try {
       const { job_id } = await uploadPDF(file, { length, language, difficulty, debate })
       router.push(`/job/${job_id}`)
-    } catch (e: any) {
-      setError(e.message || 'Upload failed.')
+    } catch (err: any) {
+      setError(err.message || 'Upload failed.')
       setLoading(false)
     }
   }
 
   return (
-    <div style={{ minHeight: '100vh', position: 'relative', zIndex: 1 }}>
+    <div>
 
-      {/* Background orbs */}
-      <div style={{
-        position: 'fixed', inset: 0, overflow: 'hidden', pointerEvents: 'none', zIndex: 0
-      }}>
+      {/* ── Hero — LEFT aligned, asymmetric, not centered ── */}
+      <div className="hero">
+        <Nav />
+
         <div style={{
-          position: 'absolute', top: '-20%', left: '-10%',
-          width: '600px', height: '600px', borderRadius: '50%',
-          background: 'radial-gradient(circle, rgba(124,106,247,0.15) 0%, transparent 70%)',
-          animation: 'glowPulse 6s ease-in-out infinite',
-        }} />
-        <div style={{
-          position: 'absolute', bottom: '-10%', right: '-10%',
-          width: '500px', height: '500px', borderRadius: '50%',
-          background: 'radial-gradient(circle, rgba(165,148,255,0.1) 0%, transparent 70%)',
-          animation: 'glowPulse 8s ease-in-out infinite 2s',
-        }} />
+          position: 'relative', zIndex: 1,
+          maxWidth: 760, margin: '0 auto',
+          padding: '68px 24px 80px',
+          /* Intentionally left-aligned — breaks symmetry */
+        }}>
+
+          <div className="anim-fade-up" style={{ marginBottom: 20 }}>
+            <span className="eyebrow">
+              <span className="eyebrow-dot" />
+              PDF → Podcast · Research made audible
+            </span>
+          </div>
+
+          {/* Headline — left aligned, max 520px so it doesn't stretch */}
+          <h1 className="display anim-fade-up-2" style={{ marginBottom: 18, maxWidth: 520 }}>
+            Turn any paper into a<br />
+            <em>podcast worth hearing.</em>
+          </h1>
+
+          <p className="anim-fade-up-3" style={{
+            fontFamily: 'var(--font-sans)', fontSize: 16, lineHeight: 1.75,
+            color: 'var(--hero-text-2)', maxWidth: 420, marginBottom: 36,
+          }}>
+            Upload a research paper, thesis, or report.
+            Get a structured host-and-expert conversation
+            with chapters, transcript, and show notes.
+          </p>
+
+          {/* CTAs — left-heavy, different padding intentionally */}
+          <div className="anim-fade-up-3" style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 56 }}>
+            <a
+              href="#upload"
+              className="btn btn-primary btn-lg"
+              onClick={e => { e.preventDefault(); document.getElementById('upload')?.scrollIntoView({ behavior: 'smooth' }) }}
+              style={{ paddingLeft: 28, paddingRight: 28 }}  /* wider than ghost — asymmetric */
+            >
+              Start converting
+            </a>
+            <a href="/about" className="btn btn-ghost-dark" style={{ fontSize: 14 }}>
+              See all features →
+            </a>
+          </div>
+
+          {/* Stats — icon + number + label, left-aligned cards */}
+          <div className="anim-fade-up-3" style={{
+            display: 'flex', gap: 12, flexWrap: 'wrap',
+            paddingTop: 32, borderTop: '1px solid var(--hero-border)',
+          }}>
+            {STATS.map(s => (
+              <div key={s.unit} className="stat-card">
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                  <span style={{ fontSize: 14 }}>{s.icon}</span>
+                  <span style={{
+                    fontFamily: 'var(--font-mono)', fontSize: 10,
+                    color: 'var(--hero-text-3)', textTransform: 'uppercase', letterSpacing: '0.07em',
+                  }}>{s.unit}</span>
+                </div>
+                <p style={{
+                  fontFamily: 'var(--font-sans)', fontWeight: 700,
+                  fontSize: 26, color: s.color,
+                  letterSpacing: '-0.03em', lineHeight: 1,
+                }}>{s.val}</p>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
 
-      {/* Nav */}
-      <nav style={{
-        position: 'relative', zIndex: 10,
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '1.25rem 2rem',
-        borderBottom: '1px solid var(--border)',
-        backdropFilter: 'blur(12px)',
-        background: 'rgba(10,10,15,0.8)',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <div style={{
-            width: 28, height: 28,
-            background: 'linear-gradient(135deg, var(--accent), var(--accent-2))',
-            borderRadius: 8,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 14,
-          }}>🎙</div>
-          <span style={{ fontFamily: 'Syne', fontWeight: 700, fontSize: '1.1rem', letterSpacing: '-0.02em' }}>
-            Listenify
-          </span>
-        </div>
-        <div style={{ display: 'flex', gap: '0.25rem' }}>
-          <Link href="/" style={{
-            color: 'var(--text)', textDecoration: 'none', fontSize: '0.85rem',
-            padding: '0.4rem 0.9rem', borderRadius: 6,
-            background: 'rgba(255,255,255,0.06)',
-            fontWeight: 500,
-          }}>Upload</Link>
-          <Link href="/about" style={{
-            color: 'var(--text-2)', textDecoration: 'none', fontSize: '0.85rem',
-            padding: '0.4rem 0.9rem', borderRadius: 6,
-            transition: 'color 0.2s',
-            fontWeight: 500,
-          }}>About</Link>
-        </div>
-      </nav>
+      <div className="section-fade" />
 
-      {/* Hero */}
-      <div style={{
-        position: 'relative', zIndex: 1,
-        maxWidth: 760, margin: '0 auto',
-        padding: '4rem 1.5rem 2rem',
-        animation: 'fadeUp 0.7s ease forwards',
-      }}>
-        <div style={{ marginBottom: '1rem' }}>
-          <span className="pill">✦ AI-Powered Podcast Generator</span>
-        </div>
-        <h1 style={{
-          fontFamily: 'Syne', fontWeight: 800, fontSize: 'clamp(2.5rem, 6vw, 4rem)',
-          lineHeight: 1.1, letterSpacing: '-0.03em', marginBottom: '1.25rem',
-        }}>
-          Turn any PDF into a{' '}
-          <span className="gradient-text">podcast</span>{' '}
-          worth listening to.
-        </h1>
-        <p style={{
-          color: 'var(--text-2)', fontSize: '1.05rem', lineHeight: 1.7,
-          maxWidth: 540, marginBottom: '3rem',
-        }}>
-          Upload a research paper. Choose your language, depth, and style.
-          Get a host-and-expert conversation with chapters, transcript, and show notes.
-        </p>
+      {/* ── Upload form ── */}
+      <div id="upload" style={{ background: 'var(--body-bg)' }}>
+        <div ref={formRef} className="reveal" style={{ maxWidth: 600, margin: '0 auto', padding: '52px 24px' }}>
 
-        {/* Upload form card */}
-        <form onSubmit={handleSubmit}>
-          <div className="glass" style={{ borderRadius: 16, padding: '2rem', marginBottom: '1rem' }}>
+          <div style={{ marginBottom: 28 }}>
+            <p className="section-label" style={{ marginBottom: 8 }}>Upload</p>
+            <h2 style={{
+              fontFamily: 'var(--font-serif)', fontSize: 26, fontWeight: 400,
+              color: 'var(--body-text)', letterSpacing: '-0.015em',
+            }}>
+              Convert your document
+            </h2>
+          </div>
 
-            {/* Drop zone */}
+          <form onSubmit={submit}>
+            {/* Dropzone — sharp corners */}
             <div
+              className={`dropzone ${dragging ? 'drag' : ''} ${file ? 'has-file' : ''}`}
+              style={{ marginBottom: 20 }}
               onClick={() => fileRef.current?.click()}
               onDragOver={e => { e.preventDefault(); setDragging(true) }}
               onDragLeave={() => setDragging(false)}
-              onDrop={handleDrop}
-              style={{
-                border: `2px dashed ${dragging ? 'var(--accent)' : file ? 'rgba(124,106,247,0.4)' : 'var(--border)'}`,
-                borderRadius: 12, padding: '2.5rem 1rem',
-                textAlign: 'center', cursor: 'pointer',
-                background: dragging ? 'rgba(124,106,247,0.05)' : file ? 'rgba(124,106,247,0.03)' : 'transparent',
-                transition: 'all 0.2s ease',
-                marginBottom: '1.75rem',
-              }}
+              onDrop={onDrop}
             >
-              <input ref={fileRef} type="file" accept="application/pdf" style={{ display: 'none' }}
+              <input ref={fileRef} type="file" accept=".pdf" style={{ display: 'none' }}
                 onChange={e => { setFile(e.target.files?.[0] ?? null); setError('') }} />
-              <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>
-                {file ? '✅' : '📄'}
-              </div>
+
               {file ? (
-                <>
-                  <p style={{ fontFamily: 'Syne', fontWeight: 600, fontSize: '0.95rem' }}>{file.name}</p>
-                  <p style={{ color: 'var(--text-3)', fontSize: '0.8rem', marginTop: 4, fontFamily: 'JetBrains Mono' }}>
-                    {(file.size / 1024 / 1024).toFixed(2)} MB · PDF ready
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, marginBottom: 5 }}>
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                      <path d="M12 4L5.5 11L2 7.5" stroke="var(--success)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                    <span style={{ fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: 14, color: 'var(--body-text)' }}>
+                      {file.name}
+                    </span>
+                  </div>
+                  <p style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--body-text-3)' }}>
+                    {(file.size / 1024 / 1024).toFixed(2)} MB ·{' '}
+                    <button type="button" onClick={e => { e.stopPropagation(); setFile(null) }}
+                      style={{ background: 'none', border: 'none', color: 'var(--body-text-3)', cursor: 'pointer', fontSize: 11, textDecoration: 'underline' }}>
+                      remove
+                    </button>
                   </p>
-                </>
+                </div>
               ) : (
-                <>
-                  <p style={{ fontFamily: 'Syne', fontWeight: 600 }}>Drop your PDF here</p>
-                  <p style={{ color: 'var(--text-3)', fontSize: '0.85rem', marginTop: 4 }}>
-                    or click to browse
+                <div>
+                  <svg width="30" height="30" viewBox="0 0 30 30" fill="none" style={{ margin: '0 auto 10px', display: 'block' }}>
+                    <rect x="4" y="2" width="17" height="24" rx="2" stroke="var(--body-border-2)" strokeWidth="1.4"/>
+                    <path d="M10 2v7h11" stroke="var(--body-border-2)" strokeWidth="1.4" strokeLinejoin="round"/>
+                    <path d="M21 20v7M18 24l3 3 3-3" stroke="var(--accent)" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                  <p style={{ fontFamily: 'var(--font-sans)', fontWeight: 500, fontSize: 14, color: 'var(--body-text)', marginBottom: 3 }}>
+                    Drop a PDF, or <span style={{ color: 'var(--accent)', textDecoration: 'underline', textUnderlineOffset: 2 }}>browse files</span>
                   </p>
-                </>
+                  <p style={{ fontFamily: 'var(--font-sans)', fontSize: 13, color: 'var(--body-text-3)' }}>
+                    Research papers, theses, reports, whitepapers
+                  </p>
+                </div>
               )}
             </div>
 
             {/* Options */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
-
-              {/* Length */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(255px, 1fr))', gap: 12, marginBottom: 12 }}>
               <div>
-                <p style={{ fontSize: '0.72rem', fontFamily: 'JetBrains Mono', color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>Episode Length</p>
-                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                <p className="section-label" style={{ marginBottom: 7 }}>Episode length</p>
+                <div className="segment">
                   {LENGTHS.map(l => (
-                    <button key={l.key} type="button" onClick={() => setLength(l.key)} style={{
-                      flex: 1, padding: '0.5rem 0.25rem', borderRadius: 8, border: 'none', cursor: 'pointer',
-                      background: length === l.key ? 'var(--accent)' : 'var(--bg3)',
-                      color: length === l.key ? 'white' : 'var(--text-2)',
-                      transition: 'all 0.15s',
-                      boxShadow: length === l.key ? '0 0 16px var(--accent-glow)' : 'none',
-                    }}>
-                      <p style={{ fontFamily: 'Syne', fontWeight: 600, fontSize: '0.75rem' }}>{l.label}</p>
-                      <p style={{ fontSize: '0.65rem', opacity: 0.7, marginTop: 1 }}>{l.desc}</p>
+                    <button key={l.key} type="button"
+                      className={`seg-btn ${length === l.key ? 'active' : ''}`}
+                      onClick={() => setLength(l.key)}>
+                      <span>{l.label}</span>
+                      <span className="seg-hint">{l.hint}</span>
                     </button>
                   ))}
                 </div>
               </div>
 
-              {/* Difficulty */}
               <div>
-                <p style={{ fontSize: '0.72rem', fontFamily: 'JetBrains Mono', color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>Difficulty</p>
-                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                <p className="section-label" style={{ marginBottom: 7 }}>Depth</p>
+                <div className="segment">
                   {DIFFS.map(d => (
-                    <button key={d.key} type="button" onClick={() => setDiff(d.key)} style={{
-                      flex: 1, padding: '0.5rem 0.25rem', borderRadius: 8, border: 'none', cursor: 'pointer',
-                      background: difficulty === d.key ? 'var(--accent)' : 'var(--bg3)',
-                      color: difficulty === d.key ? 'white' : 'var(--text-2)',
-                      transition: 'all 0.15s',
-                      boxShadow: difficulty === d.key ? '0 0 16px var(--accent-glow)' : 'none',
-                    }}>
-                      <p style={{ fontFamily: 'Syne', fontWeight: 600, fontSize: '0.75rem' }}>{d.label}</p>
-                      <p style={{ fontSize: '0.65rem', opacity: 0.7, marginTop: 1 }}>{d.desc}</p>
+                    <button key={d.key} type="button"
+                      className={`seg-btn ${difficulty === d.key ? 'active' : ''}`}
+                      onClick={() => setDiff(d.key)}>
+                      <span>{d.label}</span>
+                      <span className="seg-hint">{d.hint}</span>
                     </button>
                   ))}
                 </div>
               </div>
 
-              {/* Language */}
               <div>
-                <p style={{ fontSize: '0.72rem', fontFamily: 'JetBrains Mono', color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>Language</p>
+                <p className="section-label" style={{ marginBottom: 7 }}>Language</p>
                 <div style={{ position: 'relative' }}>
-                  <select value={language} onChange={e => setLanguage(e.target.value)} className="input" style={{ paddingRight: '2rem' }}>
+                  <select value={language} onChange={e => setLanguage(e.target.value)}
+                    className="input" style={{ paddingRight: 28, cursor: 'pointer' }}>
                     {languages.map(l => (
                       <option key={l} value={l}>{l.charAt(0).toUpperCase() + l.slice(1)}</option>
                     ))}
                   </select>
-                  <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-3)', pointerEvents: 'none' }}>▾</span>
+                  <svg style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--body-text-3)' }}
+                    width="11" height="11" viewBox="0 0 11 11" fill="none">
+                    <path d="M1.5 3.5l4 4 4-4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
                 </div>
               </div>
 
-              {/* Debate */}
               <div>
-                <p style={{ fontSize: '0.72rem', fontFamily: 'JetBrains Mono', color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>Debate Mode</p>
-                <button type="button" onClick={() => setDebate(!debate)} style={{
-                  width: '100%', padding: '0.65rem 1rem', borderRadius: 8,
-                  border: `1px solid ${debate ? 'var(--accent)' : 'var(--border)'}`,
-                  background: debate ? 'rgba(124,106,247,0.15)' : 'var(--bg3)',
-                  color: debate ? 'var(--accent-2)' : 'var(--text-2)',
-                  cursor: 'pointer', transition: 'all 0.15s',
-                  fontFamily: 'Inter', fontSize: '0.85rem', fontWeight: 500,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                  boxShadow: debate ? '0 0 16px var(--accent-glow)' : 'none',
-                }}>
-                  <span>{debate ? '⚡' : '💬'}</span>
-                  {debate ? 'Debate: On' : 'Debate: Off'}
+                <p className="section-label" style={{ marginBottom: 7 }}>Debate mode</p>
+                <button type="button" className={`toggle ${debate ? 'on' : ''}`} onClick={() => setDebate(!debate)}>
+                  <span style={{ fontSize: 13 }}>{debate ? 'Host challenges expert' : 'Collaborative tone'}</span>
+                  <div className="toggle-track"><div className="toggle-knob" /></div>
                 </button>
               </div>
             </div>
 
             {error && (
               <div style={{
-                background: 'rgba(247,79,106,0.1)', border: '1px solid rgba(247,79,106,0.3)',
-                borderRadius: 8, padding: '0.75rem 1rem', marginBottom: '1rem',
-                color: 'var(--red)', fontSize: '0.85rem', fontFamily: 'Inter',
-              }}>{error}</div>
+                display: 'flex', alignItems: 'center', gap: 7,
+                padding: '9px 12px', borderRadius: 'var(--r-md)',
+                background: 'var(--error-bg)', border: '1px solid var(--error-border)',
+                color: 'var(--error)', fontSize: 13, fontFamily: 'var(--font-sans)', marginBottom: 12,
+              }}>
+                <svg width="13" height="13" viewBox="0 0 13 13" fill="none" style={{ flexShrink: 0 }}>
+                  <circle cx="6.5" cy="6.5" r="5.5" stroke="currentColor" strokeWidth="1.2"/>
+                  <path d="M6.5 4v3M6.5 8.5v.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+                </svg>
+                {error}
+              </div>
             )}
 
-            <button type="submit" className="btn-accent" disabled={loading || !file}
-              style={{ width: '100%', fontSize: '0.95rem', padding: '0.9rem' }}>
+            <button type="submit" disabled={loading || !file}
+              className="btn btn-primary btn-lg" style={{ width: '100%' }}>
               {loading ? (
-                <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
-                  <span style={{ width: 16, height: 16, border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.7s linear infinite' }} />
+                <>
+                  <span style={{ width:14, height:14, border:'1.5px solid rgba(255,255,255,0.3)', borderTopColor:'#fff', borderRadius:'50%', display:'inline-block', animation:'spin 0.65s linear infinite' }} />
                   Uploading…
-                </span>
-              ) : 'Generate Podcast →'}
+                </>
+              ) : 'Generate podcast'}
             </button>
-          </div>
-        </form>
-
-        {/* Feature pills */}
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
-          {['8 languages', 'Chapter markers', 'Show notes', 'Full transcript', 'Debate mode'].map(f => (
-            <span key={f} className="pill" style={{ background: 'rgba(255,255,255,0.04)', borderColor: 'var(--border)', color: 'var(--text-3)' }}>{f}</span>
-          ))}
+          </form>
         </div>
+      </div>
+
+      {/* ── Features — 2-col card grid with hover, not a flat table ── */}
+      <div style={{ background: 'var(--body-bg)', borderTop: '1px solid var(--body-border)' }}>
+        <div ref={featRef} className="reveal" style={{ maxWidth: 720, margin: '0 auto', padding: '52px 24px' }}>
+
+          <div style={{ marginBottom: 28 }}>
+            <p className="section-label" style={{ marginBottom: 8 }}>What you get</p>
+            <h2 style={{ fontFamily: 'var(--font-serif)', fontSize: 26, fontWeight: 400, color: 'var(--body-text)', letterSpacing: '-0.015em' }}>
+              More than just audio
+            </h2>
+          </div>
+
+          {/* 2-column card grid — breaks symmetry vs table layout */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 10 }}>
+            {FEATURES.map((f, i) => (
+              <div key={f.label} ref={featRefs[i]} className="reveal feature-card">
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                  <span style={{ fontSize: 16 }}>{f.icon}</span>
+                  {/* Feature title — larger + bolder than before */}
+                  <p style={{ fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: 14, color: 'var(--body-text)' }}>
+                    {f.label}
+                  </p>
+                </div>
+                {/* Description — smaller + lighter than title */}
+                <p style={{ fontFamily: 'var(--font-sans)', fontSize: 13, color: 'var(--body-text-3)', lineHeight: 1.65 }}>
+                  {f.desc}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Footer ── */}
+      <div style={{ background: 'var(--body-surface)', borderTop: '1px solid var(--body-border)', padding: '20px 24px', textAlign: 'center' }}>
+        <p style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--body-text-3)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+          Listenify · FastAPI · Groq · Edge TTS · Next.js
+        </p>
       </div>
     </div>
   )

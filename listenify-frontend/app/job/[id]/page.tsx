@@ -1,200 +1,181 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
-import Link from 'next/link'
-import { getStatus, getChapters, getShowNotes, getTranscript } from '@/lib/api'
+import Nav from '@/components/Nav'
 import AudioPlayer from '@/components/AudioPlayer'
 import ShowNotes from '@/components/ShowNotes'
 import TranscriptViewer from '@/components/TranscriptViewer'
+import { getStatus, getChapters, getShowNotes, getTranscript } from '@/lib/api'
 
 type Tab = 'player' | 'shownotes' | 'transcript'
 
 const STEPS = [
-  { key: 'uploading',   label: 'Uploading PDF',          icon: '📤' },
-  { key: 'processing',  label: 'Generating podcast',      icon: '🧠' },
-  { key: 'ready',       label: 'Ready',                   icon: '✅' },
+  { key: 'uploading',  label: 'Uploading',  pct: 12 },
+  { key: 'processing', label: 'Generating', pct: 55 },
+  { key: 'ready',      label: 'Complete',   pct: 100 },
 ]
 
 export default function JobPage() {
   const { id } = useParams<{ id: string }>()
-  const [status, setStatus]     = useState('uploading')
-  const [meta, setMeta]         = useState<Record<string,string>>({})
-  const [error, setError]       = useState('')
-  const [chapters, setChapters] = useState<any[]>([])
-  const [notes, setNotes]       = useState<any>(null)
-  const [transcript, setTr]     = useState<string|null>(null)
-  const [tab, setTab]           = useState<Tab>('player')
+
+  const [status,     setStatus]  = useState('uploading')
+  const [meta,       setMeta]    = useState<Record<string,string>>({})
+  const [error,      setError]   = useState('')
+  const [chapters,   setChap]    = useState<any[]>([])
+  const [notes,      setNotes]   = useState<any>(null)
+  const [transcript, setTr]      = useState<string|null>(null)
+  const [tab,        setTab]     = useState<Tab>('player')
 
   useEffect(() => {
-    let interval: NodeJS.Timeout
-    async function poll() {
+    let iv: NodeJS.Timeout
+    const poll = async () => {
       try {
         const job = await getStatus(id)
         setStatus(job.status); setMeta(job)
         if (job.status === 'ready') {
-          clearInterval(interval)
+          clearInterval(iv)
           const [ch, sn, tr] = await Promise.all([getChapters(id), getShowNotes(id), getTranscript(id)])
-          setChapters(ch); setNotes(sn); setTr(tr)
+          setChap(ch); setNotes(sn); setTr(tr)
         }
-        if (job.status === 'failed') { clearInterval(interval); setError(job.error || 'Unknown error') }
-      } catch(e: any) { setError(e.message); clearInterval(interval) }
+        if (job.status === 'failed') { clearInterval(iv); setError(job.error || 'Unknown error') }
+      } catch (e: any) { setError(e.message); clearInterval(iv) }
     }
-    poll()
-    interval = setInterval(poll, 3000)
-    return () => clearInterval(interval)
+    poll(); iv = setInterval(poll, 3000)
+    return () => clearInterval(iv)
   }, [id])
 
-  const TABS: {key: Tab; label: string; icon: string}[] = [
-    { key: 'player',     label: 'Player',      icon: '▶' },
-    { key: 'shownotes',  label: 'Show Notes',  icon: '📋' },
-    { key: 'transcript', label: 'Transcript',  icon: '📝' },
-  ]
-
-  const stepIndex = STEPS.findIndex(s => s.key === status)
+  const stepIdx  = STEPS.findIndex(s => s.key === status)
+  const stepPct  = STEPS[stepIdx]?.pct ?? 12
+  const stepLabel = STEPS[stepIdx]?.label ?? 'Working'
 
   return (
-    <div style={{ minHeight: '100vh', position: 'relative' }}>
+    <div style={{ minHeight: '100dvh', background: 'var(--body-bg)' }}>
+      <Nav light />
 
-      {/* Background orb */}
-      <div style={{
-        position: 'fixed', top: '20%', left: '50%', transform: 'translateX(-50%)',
-        width: 600, height: 600, borderRadius: '50%', pointerEvents: 'none', zIndex: 0,
-        background: 'radial-gradient(circle, rgba(124,106,247,0.08) 0%, transparent 70%)',
-      }} />
+      <main style={{ maxWidth: 700, margin: '0 auto', padding: '40px 24px 80px' }}>
 
-      {/* Nav */}
-      <nav style={{
-        position: 'relative', zIndex: 10,
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '1.25rem 2rem',
-        borderBottom: '1px solid var(--border)',
-        backdropFilter: 'blur(12px)',
-        background: 'rgba(10,10,15,0.8)',
-      }}>
-        <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none' }}>
-          <div style={{
-            width: 28, height: 28,
-            background: 'linear-gradient(135deg, var(--accent), var(--accent-2))',
-            borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14,
-          }}>🎙</div>
-          <span style={{ fontFamily: 'Syne', fontWeight: 700, fontSize: '1.1rem', color: 'var(--text)', letterSpacing: '-0.02em' }}>
-            Listenify
-          </span>
-        </Link>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <Link href="/" className="btn-ghost">← New Upload</Link>
-          <Link href="/about" className="btn-ghost">About</Link>
-        </div>
-      </nav>
-
-      <div style={{ position: 'relative', zIndex: 1, maxWidth: 720, margin: '0 auto', padding: '2.5rem 1.5rem', animation: 'fadeUp 0.6s ease forwards' }}>
-
-        {/* Meta tags */}
-        {status === 'ready' && (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: '1.5rem' }}>
-            {meta.language   && <span className="pill">🌐 {meta.language}</span>}
-            {meta.length     && <span className="pill">⏱ {meta.length}</span>}
-            {meta.difficulty && <span className="pill">🎯 {meta.difficulty}</span>}
-            {meta.debate === 'True' && <span className="pill" style={{ background: 'rgba(247,79,106,0.12)', borderColor: 'rgba(247,79,106,0.3)', color: 'var(--red)' }}>⚡ Debate</span>}
-          </div>
-        )}
-
-        {/* Processing state */}
+        {/* ── Processing ── */}
         {status !== 'ready' && status !== 'failed' && (
-          <div className="glass" style={{ borderRadius: 16, padding: '2rem', marginBottom: '1.5rem' }}>
+          <div className="anim-fade-up">
+            <div className="card" style={{ padding: '24px 24px 20px', marginBottom: 16 }}>
 
-            {/* Steps */}
-            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '2rem' }}>
-              {STEPS.filter(s => s.key !== 'ready').map((step, i) => {
-                const done    = stepIndex > i
-                const active  = stepIndex === i
-                return (
-                  <div key={step.key} style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    <div style={{
-                      height: 3, borderRadius: 2,
-                      background: done || active ? 'var(--accent)' : 'var(--bg3)',
-                      boxShadow: active ? '0 0 8px var(--accent-glow)' : 'none',
-                      transition: 'all 0.4s ease',
-                    }} />
-                    <p style={{
-                      fontSize: '0.72rem', fontFamily: 'Inter', fontWeight: 500,
-                      color: done || active ? 'var(--text)' : 'var(--text-3)',
-                    }}>{step.icon} {step.label}</p>
-                  </div>
-                )
-              })}
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20 }}>
+                <div>
+                  <h2 style={{ fontFamily: 'var(--font-serif)', fontSize: 20, fontWeight: 400, color: 'var(--body-text)', marginBottom: 4 }}>
+                    {status === 'uploading' ? 'Uploading your document…' : 'Generating your podcast…'}
+                  </h2>
+                  <p style={{ fontFamily: 'var(--font-sans)', fontSize: 13, color: 'var(--body-text-3)', lineHeight: 1.5 }}>
+                    {status === 'processing'
+                      ? 'Summarising, scripting, and synthesising audio. Usually 1–3 minutes.'
+                      : 'Receiving your PDF…'}
+                  </p>
+                </div>
+                <span style={{
+                  fontFamily: 'var(--font-mono)', fontSize: 12,
+                  color: 'var(--accent-text)', background: 'var(--accent-light)',
+                  border: '1px solid var(--accent-border)',
+                  padding: '3px 8px', borderRadius: 'var(--r-sm)',
+                  flexShrink: 0, marginLeft: 16,
+                }}>{stepPct}%</span>
+              </div>
+
+              {/* Progress */}
+              <div className="progress-track" style={{ marginBottom: 16 }}>
+                <div className="progress-fill" style={{ width: `${stepPct}%` }} />
+              </div>
+
+              {/* Step indicators */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
+                {STEPS.map((step, i) => {
+                  const done   = i < stepIdx
+                  const active = i === stepIdx
+                  return (
+                    <div key={step.key} style={{ display: 'flex', alignItems: 'center', flex: i < STEPS.length - 1 ? 1 : 'none' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
+                        <div style={{
+                          width: 16, height: 16, borderRadius: '50%',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          background: done ? 'var(--success-bg)' : active ? 'var(--accent-light)' : 'var(--body-bg)',
+                          border: `1px solid ${done ? 'var(--success-border)' : active ? 'var(--accent-border)' : 'var(--body-border)'}`,
+                          flexShrink: 0,
+                        }}>
+                          {done
+                            ? <svg width="9" height="9" viewBox="0 0 9 9" fill="none"><path d="M1.5 4.5l2 2 4-4" stroke="var(--success)" strokeWidth="1.2" strokeLinecap="round"/></svg>
+                            : <div style={{ width: 5, height: 5, borderRadius: '50%', background: active ? 'var(--accent)' : 'var(--body-border-2)' }} />
+                          }
+                        </div>
+                        <span style={{
+                          fontFamily: 'var(--font-sans)', fontSize: 12,
+                          color: done ? 'var(--success)' : active ? 'var(--body-text)' : 'var(--body-text-3)',
+                          fontWeight: active ? 500 : 400,
+                        }}>{step.label}</span>
+                      </div>
+                      {i < STEPS.length - 1 && (
+                        <div style={{ flex: 1, height: 1, background: done ? 'var(--success-border)' : 'var(--body-border)', margin: '0 8px' }} />
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+
+              <p style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--body-text-3)', marginTop: 16 }}>
+                {id}
+              </p>
             </div>
-
-            {/* Waveform loading */}
-            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 40, marginBottom: '1.25rem' }}>
-              {Array.from({ length: 20 }).map((_, i) => (
-                <div key={i} className="wave-bar" style={{
-                  flex: 1, borderRadius: 2,
-                  background: `rgba(124,106,247,${0.3 + (i % 3) * 0.2})`,
-                  height: `${30 + Math.sin(i * 0.8) * 20}%`,
-                  animationDelay: `${i * 0.07}s`,
-                }} />
-              ))}
-            </div>
-
-            <p style={{ fontFamily: 'Syne', fontWeight: 700, fontSize: '1.3rem', marginBottom: 6 }}>
-              {status === 'uploading' ? 'Uploading your document…' : 'Crafting your podcast…'}
-            </p>
-            <p style={{ color: 'var(--text-2)', fontSize: '0.875rem', fontFamily: 'Inter', marginBottom: '1.25rem' }}>
-              {status === 'processing'
-                ? 'Summarising, scripting, and generating audio. This takes 1–3 minutes.'
-                : 'Sending your PDF to the server…'}
-            </p>
-            <p style={{ fontFamily: 'JetBrains Mono', fontSize: '0.7rem', color: 'var(--text-3)' }}>
-              job: {id}
-            </p>
           </div>
         )}
 
-        {/* Error */}
+        {/* ── Error ── */}
         {status === 'failed' && (
-          <div className="glass" style={{ borderRadius: 16, padding: '2rem', borderColor: 'rgba(247,79,106,0.3)' }}>
-            <p style={{ fontFamily: 'Syne', fontWeight: 700, fontSize: '1.3rem', color: 'var(--red)', marginBottom: 8 }}>
+          <div className="card anim-fade-up" style={{ padding: 24, borderColor: 'var(--error-border)' }}>
+            <p style={{ fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: 15, color: 'var(--error)', marginBottom: 6 }}>
               Generation failed
             </p>
-            <p style={{ fontFamily: 'JetBrains Mono', fontSize: '0.8rem', color: 'var(--text-3)', marginBottom: '1.25rem', wordBreak: 'break-all' }}>
+            <p style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--body-text-3)', marginBottom: 16, wordBreak: 'break-all', lineHeight: 1.6 }}>
               {error}
             </p>
-            <Link href="/" className="btn-ghost">← Try again</Link>
+            <a href="/" className="btn btn-secondary btn-sm">← Try again</a>
           </div>
         )}
 
-        {/* Ready — tabs */}
+        {/* ── Ready ── */}
         {status === 'ready' && (
-          <div>
-            {/* Tab bar */}
-            <div style={{
-              display: 'flex', gap: 4, padding: 4,
-              background: 'var(--bg3)', borderRadius: 10, marginBottom: '1.5rem',
-            }}>
-              {TABS.map(t => (
-                <button key={t.key} onClick={() => setTab(t.key)} style={{
-                  flex: 1, padding: '0.6rem', borderRadius: 8, border: 'none', cursor: 'pointer',
-                  background: tab === t.key ? 'var(--accent)' : 'transparent',
-                  color: tab === t.key ? 'white' : 'var(--text-2)',
-                  fontFamily: 'Syne', fontWeight: 600, fontSize: '0.82rem',
-                  transition: 'all 0.15s',
-                  boxShadow: tab === t.key ? '0 0 16px var(--accent-glow)' : 'none',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                }}>
-                  <span>{t.icon}</span> {t.label}
+          <div className="anim-fade-up">
+
+            {/* Meta badges */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 24 }}>
+              {meta.language   && <span className="badge">{meta.language}</span>}
+              {meta.length     && <span className="badge">{meta.length}</span>}
+              {meta.difficulty && <span className="badge">{meta.difficulty}</span>}
+              {meta.debate === 'True' && (
+                <span className="badge" style={{ color: 'var(--accent-text)', background: 'var(--accent-light)', borderColor: 'var(--accent-border)' }}>
+                  debate
+                </span>
+              )}
+            </div>
+
+            {/* Tabs */}
+            <div className="tab-bar">
+              {([
+                { key: 'player',     label: 'Player' },
+                { key: 'shownotes',  label: 'Show Notes' },
+                { key: 'transcript', label: 'Transcript' },
+              ] as { key: Tab; label: string }[]).map(t => (
+                <button key={t.key} className={`tab-btn ${tab === t.key ? 'active' : ''}`}
+                  onClick={() => setTab(t.key)}>
+                  {t.label}
                 </button>
               ))}
             </div>
 
-            <div style={{ animation: 'fadeIn 0.3s ease' }}>
+            <div className="anim-fade-in">
               {tab === 'player'     && <AudioPlayer jobId={id} chapters={chapters} />}
               {tab === 'shownotes'  && <ShowNotes notes={notes} />}
               {tab === 'transcript' && <TranscriptViewer jobId={id} transcript={transcript} />}
             </div>
           </div>
         )}
-      </div>
+      </main>
     </div>
   )
 }

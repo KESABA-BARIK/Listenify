@@ -2,8 +2,8 @@ import type { Metadata } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'Listenify — PDFs as Podcasts',
-  description: 'Turn any research paper or document into an engaging podcast conversation.',
+  title: 'Listenify — Research papers as podcasts',
+  description: 'Upload any PDF. Get a structured podcast conversation with chapters, show notes, and transcript.',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
