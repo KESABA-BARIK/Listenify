@@ -360,7 +360,10 @@ export default function Home() {
               </div>
             )}
 
-            <button type="submit" disabled={loading || !file}
+            <button type="submit" disabled={loading ||
+              (inputTab === 'pdf' && !file) ||
+              (inputTab === 'url' && !urlInput.trim())
+              }
               className="btn btn-primary btn-lg" style={{ width: '100%' }}>
               {loading ? (
                 <>
