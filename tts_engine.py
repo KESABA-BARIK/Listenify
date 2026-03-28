@@ -93,12 +93,13 @@ async def _podcast_to_audio_async(script, output_path, host_voice, expert_voice)
         if not stripped:
             continue
 
-        if stripped.startswith("Host:"):
+        lower = stripped.lower()
+        if lower.startswith("host:"):
             voice = host_voice
-            text = stripped[len("Host:"):].strip()
-        elif stripped.startswith("Expert:"):
+            text = stripped[stripped.index(":") + 1:].strip()
+        elif lower.startswith("expert:"):
             voice = expert_voice
-            text = stripped[len("Expert:"):].strip()
+            text = stripped[stripped.index(":") + 1:].strip()
         else:
             print(f"[tts] skipping untagged line: {repr(stripped[:80])}")
             continue
@@ -141,3 +142,26 @@ def podcast_to_audio(
         )
     finally:
         loop.close()
+
+
+def rescale_chunks_to_audio(chunks: list[dict], actual_duration: float) -> list[dict]:
+    """
+    Linearly rescale LLM-estimated timestamps to match real audio duration.
+    """
+    if not chunks:
+        return chunks
+
+    llm_total = chunks[-1]["end_seconds"]
+    if llm_total <= 0:
+        return chunks
+
+    scale = actual_duration / llm_total
+
+    rescaled = []
+    for c in chunks:
+        rescaled.append({
+            **c,
+            "start_seconds": round(c["start_seconds"] * scale, 2),
+            "end_seconds": round(c["end_seconds"] * scale, 2),
+        })
+    return rescaled

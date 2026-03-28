@@ -7,41 +7,46 @@ client = Groq(api_key=API_KEY)
 
 
 def generate_show_notes(script: str, language: str = "English") -> dict:
-    lang_instruction = (
-        f"CRITICAL: You MUST write ALL text values in {language}. "
-        f"Every term name, every definition, every finding sentence — ALL in {language}. "
-        f"Do NOT use English for any value in the JSON. Only the JSON keys (key_terms, findings, term, definition) stay in English."
-        if language.lower() != "english"
-        else "Write all content in English."
-    )
-
     prompt = f"""
-You are creating show notes for a podcast episode.
- 
-{lang_instruction}
- 
-Read the following podcast transcript and extract:
- 
-1. KEY TERMS: The 5 to 8 most important technical or domain-specific terms mentioned.
-   For each term give a plain, one-sentence definition a listener can understand.
- 
-2. MAIN FINDINGS: The 4 to 6 most important takeaways or conclusions from the episode.
-   Each finding should be one clear sentence.
- 
-Return ONLY a valid JSON object in exactly this format — no markdown, no extra text:
+You are an expert podcast producer and science communicator.
+
+Analyze this podcast transcript from a technical research paper and extract rich, useful show notes.
+
+LANGUAGE: All content must be written entirely in {language}. Only JSON keys stay in English.
+
+Extract the following:
+
+1. **key_terms** (8–12 terms): The most important technical or domain-specific concepts a listener needs to understand.
+   - Pick terms that are central to the paper's contribution, not generic CS terms.
+   - Each definition must be one clear sentence a non-expert can understand.
+   - Good: explains what the term IS and why it MATTERS in this context.
+   - Bad: vague dictionary definitions.
+
+2. **findings** (6–10 items): The most important takeaways, results, and contributions.
+   - Lead with the most impactful finding first.
+   - Include concrete numbers/metrics if mentioned (e.g. "1.5x faster", "7x improvement").
+   - Each finding must be a complete, standalone sentence — not a fragment.
+   - Focus on what makes this paper's contribution novel or significant.
+
+3. **summary** (2–3 sentences): A plain-English overview of what this paper does and why it matters.
+   Write it as if explaining to a smart friend who isn't in the field.
+
+Return ONLY valid JSON, no markdown, no extra text:
+
 {{
+  "summary": "2-3 sentence plain-English overview in {language}.",
   "key_terms": [
-    {{"term": "term name in {language}", "definition": "plain one-sentence definition in {language}"}},
+    {{"term": "Term name in {language}", "definition": "One clear sentence in {language}"}},
     ...
   ],
   "findings": [
-    "First main finding as a complete sentence in {language}.",
+    "Most impactful finding with concrete details in {language}.",
     ...
   ]
 }}
- 
+
 Transcript:
-{script[:6000]}
+{script}
 """
 
     response = client.chat.completions.create(
@@ -50,16 +55,16 @@ Transcript:
             {
                 "role": "system",
                 "content": (
-                    f"You create structured podcast show notes. "
-                    f"Return only valid JSON. "
-                    f"IMPORTANT: All text content must be written entirely in {language}. "
-                    f"Never use English for values, only for JSON keys."
+                    "You are a technical podcast producer. "
+                    "Return only valid JSON. No markdown. No preamble. "
+                    f"All text values must be in {language}. "
+                    "Be specific — include numbers and concrete details where available."
                 )
             },
             {"role": "user", "content": prompt}
         ],
         temperature=0.3,
-        max_completion_tokens=800,
+        max_completion_tokens=1500,
     )
 
     raw = response.choices[0].message.content.strip()
@@ -68,18 +73,22 @@ Transcript:
     try:
         notes = json.loads(raw)
         if "key_terms" in notes and "findings" in notes:
-            print(f"[show_notes] generated {len(notes['key_terms'])} terms, {len(notes['findings'])} findings")
+            print(f"[show_notes] {len(notes['key_terms'])} terms, {len(notes['findings'])} findings, summary={'yes' if notes.get('summary') else 'no'}")
             return notes
     except json.JSONDecodeError:
         pass
 
-    # fallback — return empty structure rather than crashing the job
-    print(f"[show_notes] LLM returned unparseable output: {raw[:200]}")
-    return {"key_terms": [], "findings": []}
-
+    print(f"[show_notes] parse failed: {raw[:200]}")
+    return {"summary": "", "key_terms": [], "findings": []}
 
 def show_notes_to_text(notes: dict) -> str:
     lines = ["", "=== SHOW NOTES ===", ""]
+
+    if notes.get("summary"):
+        lines.append("SUMMARY")
+        lines.append("-" * 7)
+        lines.append(notes["summary"])
+        lines.append("")
 
     if notes.get("findings"):
         lines.append("MAIN FINDINGS")

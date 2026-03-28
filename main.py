@@ -18,7 +18,7 @@ from podcast_service import generate_podcast_script, clean_podcast_script, DIFFI
 from show_notes_service import generate_show_notes, show_notes_to_text
 from summary_service import summarize_text
 from transcript_service import save_transcript
-from tts_engine import text_to_audiobook, podcast_to_audio
+from tts_engine import text_to_audiobook, podcast_to_audio, rescale_chunks_to_audio
 from audio_merger import merge_mp3_files
 import redis
 
@@ -73,13 +73,31 @@ def process_pdf(pdf_path: str,
         text = extract_text(pdf_path)
 
         summary = summarize_text(text, length=length)
-        scripts = []
-        for sum in summary:
-            script = generate_podcast_script(sum,length=length,language=lang_config["llm_name"],difficulty=difficulty,debate=debate)
-            script = clean_podcast_script(script)
-            scripts.append(script)
+        all_chunks = []
+        current_offset = 0
 
-        full_script = "\n".join(scripts)
+        for summary_chunk in summary:
+            chunks = generate_podcast_script(
+                summary_chunk,
+                length=length,
+                language=lang_config["llm_name"],
+                difficulty=difficulty,
+                debate=debate
+            )
+            if not chunks:
+                continue
+            for c in chunks:
+                c["start_seconds"] = round(c["start_seconds"] + current_offset, 2)
+                c["end_seconds"] = round(c["end_seconds"] + current_offset, 2)
+            current_offset = chunks[-1]["end_seconds"]
+            all_chunks.extend(chunks)
+
+        # Now you have a full list of timed chunks
+        full_script = "\n".join(
+            f"{'Host' if c['speaker'] == 'HOST' else 'Expert'}: {c['text']}"
+            for c in all_chunks
+        )
+        script_chunks_json = json.dumps(all_chunks, ensure_ascii=False)
 
         chapters = generate_chapters(full_script,language=lang_config["llm_name"])
         chaps_json = json.dumps(chapters, ensure_ascii=False)
@@ -101,6 +119,11 @@ def process_pdf(pdf_path: str,
         final_audio = os.path.join(AUDIOBOOKS_DIR, f"{job_id}_full.mp3")
         merge_mp3_files(audio_files, final_audio)
 
+        from mutagen.mp3 import MP3
+        real_duration = MP3(final_audio).info.length  # actual seconds
+        all_chunks = rescale_chunks_to_audio(all_chunks, real_duration)
+        script_chunks_json = json.dumps(all_chunks, ensure_ascii=False)
+
         # 4. Mark completed
         r.hset(f"audiobook:{job_id}", mapping={
             "status": "ready",
@@ -112,6 +135,7 @@ def process_pdf(pdf_path: str,
             "language": language,
             "difficulty": difficulty,
             "debate": str(debate),
+            "script_chunks": script_chunks_json,
         })
 
     except Exception as e:
@@ -142,19 +166,29 @@ def process_url(
 
         # 3. Generate scripts
         scripts = []
+        current_offset = 0
+
         for summary_chunk in summaries:
-            script = generate_podcast_script(
+            chunks = generate_podcast_script(
                 summary_chunk,
                 length=length,
                 language=lang_config["llm_name"],
                 difficulty=difficulty,
                 debate=debate,
             )
-            script = clean_podcast_script(script)
-            scripts.append(script)
+            if not chunks:
+                continue
+            for c in chunks:
+                c["start_seconds"] = round(c["start_seconds"] + current_offset, 2)
+                c["end_seconds"] = round(c["end_seconds"] + current_offset, 2)
+            current_offset = chunks[-1]["end_seconds"]
+            scripts.extend(chunks)
 
-        full_script = "\n".join(scripts)
-
+        full_script = "\n".join(
+            f"{'Host' if c['speaker'] == 'HOST' else 'Expert'}: {c['text']}"
+            for c in scripts
+        )
+        script_chunks_json = json.dumps(scripts, ensure_ascii=False)
         # 4. Chapters + show notes
         chapters = generate_chapters(full_script, language=lang_config["llm_name"])
         show_notes = generate_show_notes(full_script, language=lang_config["llm_name"])
@@ -185,6 +219,11 @@ def process_url(
         final_audio = os.path.join(AUDIOBOOKS_DIR, f"{job_id}_full.mp3")
         merge_mp3_files(audio_files, final_audio)
 
+        from mutagen.mp3 import MP3
+        real_duration = MP3(final_audio).info.length  # actual seconds
+        scripts = rescale_chunks_to_audio(scripts, real_duration)
+        script_chunks_json = json.dumps(scripts, ensure_ascii=False)
+
         r.hset(f"audiobook:{job_id}", mapping={
             "status": "ready",
             "final_path": final_audio,
@@ -196,6 +235,7 @@ def process_url(
             "difficulty": difficulty,
             "debate": str(debate),
             "source_url": url,
+            "script_chunks": script_chunks_json,
         })
 
     except Exception as e:

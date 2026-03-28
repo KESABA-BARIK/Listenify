@@ -1,3 +1,6 @@
+import json
+import uuid
+
 import requests
 import os
 from groq import Groq
@@ -99,69 +102,162 @@ def clean_podcast_script(script):
 
     return "\n".join(cleaned)
 
+def _extract_and_clean_json(raw: str) -> list[dict]:
+    """
+    Robustly extract a JSON array from LLM output that may have
+    unescaped quotes, apostrophes, or other bad characters inside strings.
+    """
+    # Strip markdown fences
+    raw = raw.replace("```json", "").replace("```", "").strip()
 
-def generate_podcast_script(summary, length: str="full", language: str="English", difficulty: str=DIFFICULTY, debate: bool=False) :
+    # Find the outermost [ ... ] array
+    start = raw.find("[")
+    end = raw.rfind("]")
+    if start == -1 or end == -1:
+        raise ValueError("No JSON array found in response")
+    raw = raw[start:end+1]
+
+    # First attempt: direct parse
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        pass
+
+    # Second attempt: fix unescaped single quotes inside strings
+    # e.g. "text": "it's fine" -> "text": "it\'s fine"
+    fixed = re.sub(r"(?<=: \")(.+?)(?=\",|\"\s*})",
+                   lambda m: m.group(0).replace("'", "\\'"), raw)
+    try:
+        return json.loads(fixed)
+    except json.JSONDecodeError:
+        pass
+
+    # Third attempt: extract individual objects with regex
+    # Pull each { ... } block and parse them one by one
+    chunks = []
+    for match in re.finditer(r'\{[^{}]+\}', raw, re.DOTALL):
+        obj_str = match.group(0)
+        try:
+            obj = json.loads(obj_str)
+            chunks.append(obj)
+        except json.JSONDecodeError:
+            # Try to salvage speaker and text at minimum
+            speaker_m = re.search(r'"speaker"\s*:\s*"(HOST|EXPERT)"', obj_str)
+            text_m    = re.search(r'"text"\s*:\s*"(.+?)"(?:\s*,|\s*})', obj_str, re.DOTALL)
+            start_m   = re.search(r'"start_seconds"\s*:\s*(\d+(?:\.\d+)?)', obj_str)
+            end_m     = re.search(r'"end_seconds"\s*:\s*(\d+(?:\.\d+)?)', obj_str)
+            if speaker_m and text_m:
+                chunks.append({
+                    "speaker": speaker_m.group(1),
+                    "text": text_m.group(1).replace('\\"', '"'),
+                    "start_seconds": float(start_m.group(1)) if start_m else 0,
+                    "end_seconds":   float(end_m.group(1))   if end_m   else 0,
+                })
+    if chunks:
+        return chunks
+
+    raise ValueError("Could not parse any chunks from LLM output")
+
+
+def generate_podcast_script(
+        summary: str,
+        length: str = "full",
+        language: str = "English",
+        difficulty: str = "intermediate",
+        debate: bool = False
+) -> list[dict]:
     settings = LENGTH_SCRIPT_SETTINGS.get(length, LENGTH_SCRIPT_SETTINGS["full"])
     diff = DIFFICULTY_SETTINGS.get(difficulty, DIFFICULTY_SETTINGS["intermediate"])
-    debate_bl = DEBATE_INSTRUCTION if debate else (
-        "Keep the tone collaborative. "
-        "The host is curious and supportive, not adversarial."
-    )
+    debate_instruction = DEBATE_INSTRUCTION if debate else "Keep the tone friendly, curious and collaborative."
+
     prompt = f"""
-    You are generating a podcast conversation.
+You are creating a natural podcast conversation.
 
-    Turn the following research summary into an engaging discussion
-    between a Host and an Expert.
-    
-    Target audience: {diff["audience"]}
-    
-    Tone and style: {diff["style"]}
-    
-    {debate_bl}
+Target audience: {diff["audience"]}
+Style: {diff["style"]}
 
-    Additional rules:
-    - Write the ENTIRE conversation in {language}. Every word must be in {language}.
-    - Do not repeat the summary verbatim.
-    - {settings["instruction"]}
- 
-    Format strictly like (labels Host: and Expert: must stay in English even if content is in {language}):
-    
-    Host: ...
-    Expert: ...
-    Host: ...
-    Expert: ...
+{debate_instruction}
 
-    Summary:
-    {summary}
-    """
+CRITICAL JSON RULES:
+- Return ONLY a valid JSON array. No markdown, no explanation, no text outside the array.
+- Every string value must use double quotes.
+- Do NOT use apostrophes or single quotes inside text values. 
+  Write "it is" instead of "it's", "do not" instead of "don't", etc.
+- Do NOT use double quotes inside text values.
+- Timestamps must be realistic: ~3-4 seconds per word spoken aloud.
+- Timestamps must be continuous (each start = previous end).
 
-    system_msg = (
-        f"Convert summaries into a podcast conversation between Host and Expert "
-        f"pitched at {diff['audience']}. "
-        f"{'The host is a sharp, challenging interviewer who pushes back and probes weaknesses.' if debate else 'The host is curious and collaborative.'} "
-        f"Always respond entirely in {language}."
-    )
+Format:
+[
+  {{"speaker": "HOST", "text": "Hello everyone", "start_seconds": 0, "end_seconds": 8}},
+  {{"speaker": "EXPERT", "text": "Today we discuss", "start_seconds": 8, "end_seconds": 25}}
+]
 
-    response = client.chat.completions.create(
-        model="llama-3.1-8b-instant",
-        messages=[
-            {"role": "system", "content": system_msg},
-            {
-                "role": "user",
-                "content": prompt
-            }
-        ],
-        temperature=0.8 if debate else 0.7,
-        max_completion_tokens=settings["max_tokens"],
-    )
+Summary:
+{summary}
+"""
 
-    script = response.choices[0].message.content
+    try:
+        response = client.chat.completions.create(
+            model="llama-3.1-8b-instant",
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        f"Return only a valid JSON array. No markdown. No preamble. "
+                        f"Spoken text must be in {language}. "
+                        f"Never use apostrophes or quotes inside string values — "
+                        f"use formal contractions instead (do not, it is, we are)."
+                    )
+                },
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.5,  # lower = more JSON-compliant output
+            max_completion_tokens=settings["max_tokens"] + 400,
+        )
 
-    print("\nprompt: ", prompt)
-    print("Podcast: ", script)
+        raw = response.choices[0].message.content.strip()
+        chunks = _extract_and_clean_json(raw)
 
-    return clean_podcast_script(script)
+        if not isinstance(chunks, list):
+            raise ValueError("Not a list")
 
+        cleaned = []
+        current_time = 0
+
+        for c in chunks:
+            if isinstance(c, dict) and c.get("speaker") in ["HOST", "EXPERT"]:
+                text = str(c.get("text", "")).strip()
+                if not text:
+                    continue
+                start = float(c.get("start_seconds", current_time))
+                end   = float(c.get("end_seconds", current_time + max(8, len(text.split()) // 3)))
+
+                cleaned.append({
+                    "id":            str(uuid.uuid4())[:8],
+                    "speaker":       c["speaker"],
+                    "text":          text,
+                    "start_seconds": start,
+                    "end_seconds":   end,
+                })
+                current_time = end
+
+        if cleaned:
+            print(f"[podcast_script] Success: {len(cleaned)} timed chunks")
+            return cleaned
+
+        raise ValueError("No valid chunks after cleaning")
+
+    except Exception as e:
+        print(f"[podcast_script] Timed generation failed: {e}")
+        return []
+
+def generate_podcast_script_fallback(summary: str, language: str, debate: bool) -> list[dict]:
+    """Simple fallback when timed generation fails"""
+    # You can keep your old generate_podcast_script logic here and then split it
+    script = "Host: Welcome to the show.\nExpert: Today we are discussing the paper."  # placeholder
+    # ... split logic
+    return []
     # TEMP MOCK (for development)
     # return """
     # Host: Welcome! Today we’re discussing the document.
