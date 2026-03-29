@@ -11,10 +11,12 @@ import os
 from starlette.responses import PlainTextResponse
 from fastapi.middleware.cors import CORSMiddleware
 
+from QA_service import answer_question
 from chapter_service import generate_chapters, chapters_to_transcript_header
 from language_config import get_language_config, DEFAULT_LANGUAGE, supported_languages
 from pdf_extractor import extract_text
 from podcast_service import generate_podcast_script, clean_podcast_script, DIFFICULTY
+from quiz_service import generate_quiz
 from show_notes_service import generate_show_notes, show_notes_to_text
 from summary_service import summarize_text
 from transcript_service import save_transcript
@@ -499,3 +501,86 @@ def download_transcript(job_id: str):
         raise HTTPException(status_code=404, detail="Transcript not found")
     return FileResponse(transcript_path, media_type="text/plain",
                         filename=f"{job_id}_transcript.txt")
+
+# quiz.........
+@app.get("/audiobook/{job_id}/quiz")
+def get_quiz(job_id: str):
+    """
+    Returns cached quiz if already generated, otherwise generates one.
+    Cached in Redis so it's only generated once per job.
+    """
+    job = r.hgetall(f"audiobook:{job_id}")
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.get("status") != "ready":
+        raise HTTPException(status_code=400, detail="Podcast not ready yet")
+
+    # Return cached quiz if exists
+    cached = job.get("quiz")
+    if cached:
+        import json as _json
+        return _json.loads(cached)
+
+    # Generate quiz from transcript
+    transcript_path = job.get("transcript_path")
+    if not transcript_path or not os.path.exists(transcript_path):
+        raise HTTPException(status_code=404, detail="Transcript not found — cannot generate quiz")
+
+    with open(transcript_path, "r", encoding="utf-8") as f:
+        transcript = f.read()
+
+    difficulty = job.get("difficulty", "intermediate")
+
+    try:
+        quiz = generate_quiz(transcript, difficulty=difficulty)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Quiz generation failed: {str(e)}")
+
+    # Cache in Redis
+    import json as _json
+    r.hset(f"audiobook:{job_id}", "quiz", _json.dumps(quiz, ensure_ascii=False))
+
+    return quiz
+
+
+# ── Q&A ───────────────────────────────────────────────────────
+
+from pydantic import BaseModel
+
+class QARequest(BaseModel):
+    question: str
+
+
+@app.post("/audiobook/{job_id}/ask")
+def ask_question(job_id: str, body: QARequest):
+    """
+    Answers a listener's question using the podcast transcript as context.
+    """
+    job = r.hgetall(f"audiobook:{job_id}")
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.get("status") != "ready":
+        raise HTTPException(status_code=400, detail="Podcast not ready yet")
+
+    question = body.question.strip()
+    if not question:
+        raise HTTPException(status_code=400, detail="Question cannot be empty")
+    if len(question) > 500:
+        raise HTTPException(status_code=400, detail="Question too long (max 500 chars)")
+
+    transcript_path = job.get("transcript_path")
+    if not transcript_path or not os.path.exists(transcript_path):
+        raise HTTPException(status_code=404, detail="Transcript not found")
+
+    with open(transcript_path, "r", encoding="utf-8") as f:
+        transcript = f.read()
+
+    try:
+        answer = answer_question(question, transcript)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Could not answer question: {str(e)}")
+
+    return {
+        "question": question,
+        "answer": answer,
+    }

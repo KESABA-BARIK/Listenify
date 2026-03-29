@@ -105,4 +105,4 @@ def show_notes_to_text(notes: dict) -> str:
         lines.append("")
 
     lines.append("=" * 16)
-    return "\n".join(lines)
+    return "\n".join(lines) 
