@@ -19,7 +19,7 @@ LENGTH_SCRIPT_SETTINGS = {
         "instruction": "Keep it moderate — 6 to 8 exchanges. Cover the key ideas without going into full detail."
     },
     "full": {
-        "max_tokens": 8192,
+        "max_tokens": 4000,
         "instruction": "Be thorough — cover all major points with depth. Allow natural elaboration and follow-up questions."
     }
 }
