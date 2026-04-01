@@ -52,7 +52,10 @@ def generate_quiz(transcript: str, difficulty: str = "intermediate") -> dict:
 
     response = client.chat.completions.create(
         model="llama-3.1-8b-instant",
-        messages=[{"role": "user", "content": prompt}],
+        messages=[{"role": "user", "content": prompt},
+                  {"role": "system", "content": ("You are a fair quiz generator. "
+                                                "Randomly choose which option (A, B, C, or D) is correct for each question. "
+                                                "Do not favor any particular letter.")}],
         max_tokens=1500,
         temperature=0.4,
     )

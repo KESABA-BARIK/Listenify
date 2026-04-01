@@ -16,13 +16,13 @@ LANGUAGE: All content must be written entirely in {language}. Only JSON keys sta
 
 Extract the following:
 
-1. **key_terms** (8–12 terms): The most important technical or domain-specific concepts a listener needs to understand.
+1. **key_terms** (8–50 terms): The most important technical or domain-specific concepts a listener needs to understand.
    - Pick terms that are central to the paper's contribution, not generic CS terms.
    - Each definition must be one clear sentence a non-expert can understand.
    - Good: explains what the term IS and why it MATTERS in this context.
    - Bad: vague dictionary definitions.
 
-2. **findings** (6–10 items): The most important takeaways, results, and contributions.
+2. **findings** (6–30 items): The most important takeaways, results, and contributions.
    - Lead with the most impactful finding first.
    - Include concrete numbers/metrics if mentioned (e.g. "1.5x faster", "7x improvement").
    - Each finding must be a complete, standalone sentence — not a fragment.
@@ -105,4 +105,4 @@ def show_notes_to_text(notes: dict) -> str:
         lines.append("")
 
     lines.append("=" * 16)
-    return "\n".join(lines) 
+    return "\n".join(lines)
