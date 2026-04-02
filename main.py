@@ -504,7 +504,7 @@ def download_transcript(job_id: str):
 
 # quiz.........
 @app.get("/audiobook/{job_id}/quiz")
-def get_quiz(job_id: str):
+def get_quiz(job_id: str, regenerate: bool = False):
     """
     Returns cached quiz if already generated, otherwise generates one.
     Cached in Redis so it's only generated once per job.
@@ -517,7 +517,7 @@ def get_quiz(job_id: str):
 
     # Return cached quiz if exists
     cached = job.get("quiz")
-    if cached:
+    if cached and not regenerate:
         import json as _json
         return _json.loads(cached)
 
@@ -532,7 +532,7 @@ def get_quiz(job_id: str):
     difficulty = job.get("difficulty", "intermediate")
 
     try:
-        quiz = generate_quiz(transcript, difficulty=difficulty)
+        quiz = generate_quiz(transcript, difficulty=difficulty, regenerate=regenerate)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Quiz generation failed: {str(e)}")
 

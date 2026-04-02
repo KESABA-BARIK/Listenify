@@ -26,7 +26,7 @@ Return ONLY valid JSON in this exact format (no markdown, no preamble):
         "C": "Third option",
         "D": "Fourth option"
       }},
-      "correct": "A",
+      "correct": "<one of the options ensure randomness>",
       "explanation": "Explanation of why A is correct and the others are not."
     }}
   ]
@@ -37,7 +37,7 @@ Transcript:
 """
 
 
-def generate_quiz(transcript: str, difficulty: str = "intermediate") -> dict:
+def generate_quiz(transcript: str, difficulty: str = "intermediate", regenerate: bool = False) -> dict:
     """
     Generates 5 MCQ questions from the podcast transcript.
     Returns a dict with a 'questions' list.
@@ -45,38 +45,47 @@ def generate_quiz(transcript: str, difficulty: str = "intermediate") -> dict:
     # Trim transcript to avoid token limits
     trimmed = transcript[:6000] if len(transcript) > 6000 else transcript
 
+    regen_text = "Generate a completely new and different set of 5 questions." if regenerate else ""
+
     prompt = QUIZ_PROMPT.format(
         transcript=trimmed,
-        difficulty=difficulty,
+        difficulty=difficulty.capitalize()
     )
 
-    response = client.chat.completions.create(
-        model="llama-3.1-8b-instant",
-        messages=[{"role": "user", "content": prompt},
-                  {"role": "system", "content": ("You are a fair quiz generator. "
-                                                "Randomly choose which option (A, B, C, or D) is correct for each question. "
-                                                "Do not favor any particular letter.")}],
-        max_tokens=1500,
-        temperature=0.4,
-    )
+    if regen_text:
+        prompt = regen_text + "\n\n" + prompt
 
-    raw = response.choices[0].message.content.strip()
+    try:
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": prompt},
+                      {"role": "system", "content": ("You are a fair quiz generator. "
+                                                    "Randomly choose which option (A, B, C, or D) is correct for each question. "
+                                                    "Do not favor any particular letter.")}],
+            max_tokens=1500,
+            temperature=0.4,
+        )
+
+        raw = response.choices[0].message.content.strip()
 
     # Strip markdown code fences if present
-    if raw.startswith("```"):
-        raw = raw.split("```")[1]
-        if raw.startswith("json"):
-            raw = raw[4:]
+        if raw.startswith("```"):
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
         raw = raw.strip()
 
-    parsed = json.loads(raw)
+        parsed = json.loads(raw)
 
     # Validate structure
-    if "questions" not in parsed:
-        raise ValueError("Quiz response missing 'questions' key")
+        if "questions" not in parsed:
+            raise ValueError("Quiz response missing 'questions' key")
 
-    questions = parsed["questions"]
-    if len(questions) < 3:
-        raise ValueError(f"Too few questions generated: {len(questions)}")
+        questions = parsed["questions"]
+        if len(questions) < 3:
+            raise ValueError(f"Too few questions generated: {len(questions)}")
 
-    return parsed
+        return parsed
+    except Exception as e:
+        print(f"[quiz] Error: {e}")
+        return {"questions":[]}

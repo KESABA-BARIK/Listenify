@@ -6,43 +6,51 @@ from summary_service import API_KEY
 client = Groq(api_key=API_KEY)
 
 
-def generate_show_notes(script: str, language: str = "English") -> dict:
+def chunk_text(text: str, max_chars: int = 4000):
+    chunks = []
+    start = 0
+    while start < len(text):
+        chunks.append(text[start:start + max_chars])
+        start += max_chars
+    return chunks
+
+
+def merge_show_notes(notes_list):
+    merged = {
+        "summary": "",
+        "key_terms": [],
+        "findings": []
+    }
+
+    for notes in notes_list:
+        merged["key_terms"].extend(notes.get("key_terms", []))
+        merged["findings"].extend(notes.get("findings", []))
+
+    # Deduplicate key terms
+    seen = set()
+    unique_terms = []
+    for item in merged["key_terms"]:
+        if item["term"] not in seen:
+            seen.add(item["term"])
+            unique_terms.append(item)
+
+    merged["key_terms"] = unique_terms[:15]
+    merged["findings"] = merged["findings"][:15]
+
+    return merged
+
+
+def _generate_show_notes_chunk(script: str, language: str = "English") -> dict:
     prompt = f"""
-You are an expert podcast producer and science communicator.
+Extract structured show notes from this transcript.
 
-Analyze this podcast transcript from a technical research paper and extract rich, useful show notes.
+LANGUAGE: {language}
 
-LANGUAGE: All content must be written entirely in {language}. Only JSON keys stay in English.
-
-Extract the following:
-
-1. **key_terms** (8–50 terms): The most important technical or domain-specific concepts a listener needs to understand.
-   - Pick terms that are central to the paper's contribution, not generic CS terms.
-   - Each definition must be one clear sentence a non-expert can understand.
-   - Good: explains what the term IS and why it MATTERS in this context.
-   - Bad: vague dictionary definitions.
-
-2. **findings** (6–30 items): The most important takeaways, results, and contributions.
-   - Lead with the most impactful finding first.
-   - Include concrete numbers/metrics if mentioned (e.g. "1.5x faster", "7x improvement").
-   - Each finding must be a complete, standalone sentence — not a fragment.
-   - Focus on what makes this paper's contribution novel or significant.
-
-3. **summary** (2–3 sentences): A plain-English overview of what this paper does and why it matters.
-   Write it as if explaining to a smart friend who isn't in the field.
-
-Return ONLY valid JSON, no markdown, no extra text:
-
+Return JSON:
 {{
-  "summary": "2-3 sentence plain-English overview in {language}.",
-  "key_terms": [
-    {{"term": "Term name in {language}", "definition": "One clear sentence in {language}"}},
-    ...
-  ],
-  "findings": [
-    "Most impactful finding with concrete details in {language}.",
-    ...
-  ]
+  "summary": "2-3 sentences",
+  "key_terms": [{{"term": "...", "definition": "..."}}],
+  "findings": ["..."]
 }}
 
 Transcript:
@@ -50,36 +58,64 @@ Transcript:
 """
 
     response = client.chat.completions.create(
-        model="llama-3.1-8b-instant",
+        model="llama-3.3-70b-versatile",
         messages=[
             {
                 "role": "system",
                 "content": (
-                    "You are a technical podcast producer. "
-                    "Return only valid JSON. No markdown. No preamble. "
-                    f"All text values must be in {language}. "
-                    "Be specific — include numbers and concrete details where available."
+                    "Return only valid JSON. No markdown. "
+                    f"All text must be in {language}."
                 )
             },
             {"role": "user", "content": prompt}
         ],
         temperature=0.3,
-        max_completion_tokens=1500,
+        max_completion_tokens=800,
     )
 
     raw = response.choices[0].message.content.strip()
     raw = raw.replace("```json", "").replace("```", "").strip()
 
     try:
-        notes = json.loads(raw)
-        if "key_terms" in notes and "findings" in notes:
-            print(f"[show_notes] {len(notes['key_terms'])} terms, {len(notes['findings'])} findings, summary={'yes' if notes.get('summary') else 'no'}")
-            return notes
+        return json.loads(raw)
     except json.JSONDecodeError:
-        pass
+        print(f"[show_notes] chunk parse failed: {raw[:200]}")
+        return {"summary": "", "key_terms": [], "findings": []}
 
-    print(f"[show_notes] parse failed: {raw[:200]}")
-    return {"summary": "", "key_terms": [], "findings": []}
+
+# ✅ MAIN FUNCTION (SAFE)
+def generate_show_notes(script: str, language: str = "English") -> dict:
+    try:
+        # 🔥 STEP 1: chunk input
+        chunks = chunk_text(script, 4000)
+
+        partial_notes = []
+
+        # 🔥 STEP 2: process each chunk safely
+        for chunk in chunks:
+            notes = _generate_show_notes_chunk(chunk, language)
+            if notes:
+                partial_notes.append(notes)
+
+        if not partial_notes:
+            return {"summary": "", "key_terms": [], "findings": []}
+
+        # 🔥 STEP 3: merge results
+        merged = merge_show_notes(partial_notes)
+
+        # 🔥 STEP 4: generate better summary from SMALL input
+        summary_source = " ".join(chunks[:2])  # only first chunks
+        summary_notes = _generate_show_notes_chunk(summary_source, language)
+        merged["summary"] = summary_notes.get("summary", "")
+
+        print(f"[show_notes] chunks={len(chunks)}, terms={len(merged['key_terms'])}, findings={len(merged['findings'])}")
+
+        return merged
+
+    except Exception as e:
+        print(f"[show_notes] failed: {str(e)}")
+        return {"summary": "", "key_terms": [], "findings": []}
+
 
 def show_notes_to_text(notes: dict) -> str:
     lines = ["", "=== SHOW NOTES ===", ""]
