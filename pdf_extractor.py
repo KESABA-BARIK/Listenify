@@ -49,7 +49,7 @@ def extract_headings(pdf_path: str) -> list[str]:
 
 
 
-def chunk_text(text, chunk_size=1500, overlap=200):
+def chunk_text(text, chunk_size=2000, overlap=200):
 
     words = text.split()
 

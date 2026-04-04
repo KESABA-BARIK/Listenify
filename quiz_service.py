@@ -57,7 +57,7 @@ def generate_quiz(transcript: str, difficulty: str = "intermediate", regenerate:
 
     try:
         response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
+            model="llama-3.1-8b-instant",
             messages=[{"role": "user", "content": prompt},
                       {"role": "system", "content": ("You are a fair quiz generator. "
                                                     "Randomly choose which option (A, B, C, or D) is correct for each question. "

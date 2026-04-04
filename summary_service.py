@@ -40,7 +40,7 @@ def summarize_text(text: str, length: str = "full") -> list[str]:
 
         try:
             response = client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
+                model="llama-3.1-8b-instant",
                 messages=[
                     {
                         "role": "system",

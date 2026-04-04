@@ -9,6 +9,12 @@ import re
 API_KEY = os.getenv('GROQ_API_KEY')
 client = Groq(api_key=API_KEY)
 
+MODELS_PRIORITY = [
+    "llama-3.3-70b-versatile",
+    "qwen/qwen3-32b",
+    "llama-3.1-8b-instant",
+]
+
 LENGTH_SCRIPT_SETTINGS = {
     "brief": {
         "max_tokens": 400,
@@ -178,6 +184,18 @@ Style: {diff["style"]}
 
 {debate_instruction}
 
+CRITICAL CONVERSATION RULES:
+- The conversation MUST alternate strictly:
+  HOST → EXPERT → HOST → EXPERT → ...
+- NEVER produce two HOST lines in a row.
+- NEVER produce two EXPERT lines in a row.
+- At least 40% of lines must be from EXPERT.
+- This is a dialogue, not a monologue.
+- DO NOT narrate like a biography or resume.
+- The Host must ask questions, not describe everything.
+- The Expert must explain ideas, not repeat facts.
+- Make it feel like a real interview, not a summary.
+
 CRITICAL JSON RULES:
 - Return ONLY a valid JSON array. No markdown, no explanation, no text outside the array.
 - Every string value must use double quotes.
@@ -196,61 +214,72 @@ Format:
 Summary:
 {summary}
 """
+    last_error = None
+    for model in MODELS_PRIORITY:
+        try:
+            print(f"[LLM] Trying model: {model}")
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            f"Return only a valid JSON array. No markdown. No preamble. "
+                            f"Spoken text must be in {language}. "
+                            f"Never use apostrophes or quotes inside string values — "
+                            f"use formal contractions instead (do not, it is, we are)."
+                        )
+                    },
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.5,  # lower = more JSON-compliant output
+                max_completion_tokens=settings["max_tokens"] + 400,
+            )
 
-    try:
-        response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        f"Return only a valid JSON array. No markdown. No preamble. "
-                        f"Spoken text must be in {language}. "
-                        f"Never use apostrophes or quotes inside string values — "
-                        f"use formal contractions instead (do not, it is, we are)."
-                    )
-                },
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.5,  # lower = more JSON-compliant output
-            max_completion_tokens=settings["max_tokens"] + 400,
-        )
+            raw = response.choices[0].message.content.strip()
+            chunks = _extract_and_clean_json(raw)
 
-        raw = response.choices[0].message.content.strip()
-        chunks = _extract_and_clean_json(raw)
+            if not isinstance(chunks, list):
+                raise ValueError("Not a list")
 
-        if not isinstance(chunks, list):
-            raise ValueError("Not a list")
+            cleaned = []
+            current_time = 0
 
-        cleaned = []
-        current_time = 0
+            for c in chunks:
+                if isinstance(c, dict) and c.get("speaker") in ["HOST", "EXPERT"]:
+                    text = str(c.get("text", "")).strip()
+                    if not text:
+                        continue
+                    start = float(c.get("start_seconds", current_time))
+                    end   = float(c.get("end_seconds", current_time + max(8, len(text.split()) // 3)))
 
-        for c in chunks:
-            if isinstance(c, dict) and c.get("speaker") in ["HOST", "EXPERT"]:
-                text = str(c.get("text", "")).strip()
-                if not text:
-                    continue
-                start = float(c.get("start_seconds", current_time))
-                end   = float(c.get("end_seconds", current_time + max(8, len(text.split()) // 3)))
+                    cleaned.append({
+                        "id":            str(uuid.uuid4())[:8],
+                        "speaker":       c["speaker"],
+                        "text":          text,
+                        "start_seconds": start,
+                        "end_seconds":   end,
+                    })
+                    current_time = end
 
-                cleaned.append({
-                    "id":            str(uuid.uuid4())[:8],
-                    "speaker":       c["speaker"],
-                    "text":          text,
-                    "start_seconds": start,
-                    "end_seconds":   end,
-                })
-                current_time = end
+            if cleaned:
+                print(f"[podcast_script] Success: {len(cleaned)} timed chunks")
+                return cleaned
 
-        if cleaned:
-            print(f"[podcast_script] Success: {len(cleaned)} timed chunks")
-            return cleaned
+            raise ValueError("No valid chunks after cleaning")
 
-        raise ValueError("No valid chunks after cleaning")
+        except Exception as e:
+            last_error = e
+            err = str(e)
+            if "429" in err or "rate_limit" in err:
+                print(f"[LLM] Rate limit on {model}, trying next...")
+                continue
+            else:
+                print(f"[LLM] Non-recoverable error on {model}: {e}")
+                break
 
-    except Exception as e:
-        print(f"[podcast_script] Timed generation failed: {e}")
-        return []
+    print(f"[LLM] All models failed. Last error: {last_error}")
+    return []
 
 def generate_podcast_script_fallback(summary: str, language: str, debate: bool) -> list[dict]:
     """Simple fallback when timed generation fails"""

@@ -14,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from QA_service import answer_question
 from chapter_service import generate_chapters, chapters_to_transcript_header
 from language_config import get_language_config, DEFAULT_LANGUAGE, supported_languages
+from mind_map_service import generate_mind_map
 from pdf_extractor import extract_text
 from podcast_service import generate_podcast_script, clean_podcast_script, DIFFICULTY
 from quiz_service import generate_quiz
@@ -112,7 +113,11 @@ def process_pdf(pdf_path: str,
         transcript_chaps = chap_header + full_script + show_notes_text
 
         transcript_path = save_transcript(transcript_chaps, job_id, TRANSCRIPTS_DIR)
-        r.hset(f"audiobook:{job_id}", mapping={"transcript_path": transcript_path,"chapters":chaps_json,"show_notes": show_notes_json,})
+
+        mind_map = generate_mind_map(full_script, language=lang_config["llm_name"])
+        mind_map_json = json.dumps(mind_map, ensure_ascii=False)
+
+        r.hset(f"audiobook:{job_id}", mapping={"transcript_path": transcript_path,"chapters":chaps_json,"show_notes": show_notes_json, "mind_map": mind_map_json})
 
         # 2. Generate audio chunks
         audio_files = podcast_to_audio(full_script, os.path.join(AUDIOBOOKS_DIR, job_id),host_voice=lang_config["host_voice"],expert_voice=lang_config["expert_voice"])
@@ -138,6 +143,7 @@ def process_pdf(pdf_path: str,
             "difficulty": difficulty,
             "debate": str(debate),
             "script_chunks": script_chunks_json,
+            "mind_map": mind_map_json,
         })
 
     except Exception as e:
@@ -203,10 +209,14 @@ def process_url(
         full_transcript = chapter_header + full_script + show_notes_text
         transcript_path = save_transcript(full_transcript, job_id, TRANSCRIPTS_DIR)
 
+        mind_map = generate_mind_map(full_script, language=lang_config["llm_name"])
+        mind_map_json = json.dumps(mind_map, ensure_ascii=False)
+
         r.hset(f"audiobook:{job_id}", mapping={
             "transcript_path": transcript_path,
             "chapters": chapters_json,
             "show_notes": sn_json,
+            "mind_map": mind_map_json,
         })
 
         # 6. Audio
@@ -238,6 +248,7 @@ def process_url(
             "debate": str(debate),
             "source_url": url,
             "script_chunks": script_chunks_json,
+            "mind_map": mind_map_json,
         })
 
     except Exception as e:
@@ -584,3 +595,15 @@ def ask_question(job_id: str, body: QARequest):
         "question": question,
         "answer": answer,
     }
+
+@app.get("/audiobook/{job_id}/mindmap")
+def get_mind_map(job_id: str):
+    job = r.hgetall(f"audiobook:{job_id}")
+    if not job or job.get("status") != "ready":
+        raise HTTPException(status_code=400, detail="Podcast not ready yet")
+
+    mind_map_raw = job.get("mind_map")
+    if not mind_map_raw:
+        raise HTTPException(status_code=404, detail="Mind map not found")
+
+    return json.loads(mind_map_raw)
