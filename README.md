@@ -58,7 +58,7 @@ A 15-minute host-and-expert conversation before you dive into the full paper cha
 
 <br/>
 
-👉 [Watch full demo video](https://github.com/KESABA-BARIK/Listenify/raw/main/assets/out.mp4)
+[Watch full demo video](https://github.com/KESABA-BARIK/Listenify/raw/main/assets/out.mp4)
 
 </div>
 
