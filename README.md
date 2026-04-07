@@ -53,12 +53,12 @@ A 15-minute host-and-expert conversation before you dive into the full paper cha
 -->
 
 <div align="center">
-<div align="center">
-  <video width="820" controls autoplay loop muted>
-    <source src="https://github.com/KESABA-BARIK/Listenify/raw/main/assets/out.mp4" type="video/mp4">
-    Your browser does not support the video tag.
-  </video>
-</div>
+
+![Listenify demo](./assets/out.gif)
+
+<br/>
+
+👉 [Watch full demo video](https://github.com/KESABA-BARIK/Listenify/raw/main/assets/out.mp4)
 
 </div>
 
