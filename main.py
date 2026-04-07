@@ -360,10 +360,15 @@ def list_languages():
         pass
     return {"supported_languages": supported_languages()}
 @app.get("/status/{job_id}")
-def status(job_id: str):
+def status(job_id: str, long_poll: bool = False):
     job = r.hgetall(f"audiobook:{job_id}")
     if not job:
         raise HTTPException(status_code=404, detail="Invalid job ID")
+
+    # If still processing and long_poll is requested, wait a bit
+    if long_poll and job.get("status") == "processing":
+        # You can add small sleep here (max 10-15s) for true long polling
+        pass
 
     return job
 
