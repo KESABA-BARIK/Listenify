@@ -24,6 +24,10 @@ from transcript_service import save_transcript
 from tts_engine import text_to_audiobook, podcast_to_audio, rescale_chunks_to_audio
 from audio_merger import merge_mp3_files
 import redis
+from storage_service import upload_audio, upload_transcript, delete_job_files
+from rss_service import build_rss_feed
+from fastapi.responses import Response
+from fastapi.staticfiles import StaticFiles
 
 from url_extractor import extract_text_from_url
 
@@ -59,12 +63,30 @@ CHUNK_SIZE = 1024 * 1024
 VALID_LENGTHS = {"brief", "standard", "full"}
 diff = {"beginner","intermediate","advanced"}
 
+from fastapi import Depends
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from supabase_client import supabase
+
+security = HTTPBearer()
+
+app.mount("/", StaticFiles(directory="static"), name="static")
+
+def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    token = credentials.credentials
+
+    user = supabase.auth.get_user(token)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    return user.user
+
 def process_pdf(pdf_path: str,
                 job_id: str,
                 length:str="full",
                 language:str="english",
                 difficulty:str=DIFFICULTY,
-                debate:bool=False):
+                debate:bool=False,
+                user_id: str = "", ):
     try:
         r.hset(f"audiobook:{job_id}", mapping={
             "status": "processing"
@@ -131,10 +153,24 @@ def process_pdf(pdf_path: str,
         all_chunks = rescale_chunks_to_audio(all_chunks, real_duration)
         script_chunks_json = json.dumps(all_chunks, ensure_ascii=False)
 
+        audio_url = upload_audio(final_audio, user_id, job_id)
+        transcript_url = upload_transcript(transcript_path, user_id, job_id)
+
+        supabase.table("podcasts").update({
+            "status": "ready",
+            "audio_url": audio_url,  # now a real public URL
+            "transcript_url": transcript_url,  # now a real public URL
+            "chapters": json.loads(chaps_json),
+            "show_notes": json.loads(show_notes_json),
+            "mind_map": json.loads(mind_map_json),
+        }).eq("job_id", job_id).execute()
+
         # 4. Mark completed
         r.hset(f"audiobook:{job_id}", mapping={
             "status": "ready",
-            "final_path": final_audio,
+            "final_path": final_audio,  # local path still used for streaming
+            "audio_url": audio_url,
+            "transcript_url": transcript_url,
             "length": length,
             "transcript_path": transcript_path,
             "chapters": chaps_json,
@@ -147,6 +183,11 @@ def process_pdf(pdf_path: str,
         })
 
     except Exception as e:
+
+        supabase.table("podcasts").update({
+            "status": "failed"
+        }).eq("job_id", job_id).execute()
+
         r.hset(f"audiobook:{job_id}", mapping={
             "status": "failed",
             "error": str(e)
@@ -160,6 +201,7 @@ def process_url(
         language: str = "english",
         difficulty: str = DIFFICULTY,
         debate: bool = False,
+        user_id: str = "",
 ):
     try:
         r.hset(f"audiobook:{job_id}", mapping={"status": "processing"})
@@ -236,12 +278,24 @@ def process_url(
         scripts = rescale_chunks_to_audio(scripts, real_duration)
         script_chunks_json = json.dumps(scripts, ensure_ascii=False)
 
+        audio_url = upload_audio(final_audio, user_id, job_id)
+        transcript_url = upload_transcript(transcript_path, user_id, job_id)
+
+        supabase.table("podcasts").update({
+            "status": "ready",
+            "audio_url": audio_url,
+            "transcript_url": transcript_url,
+            "chapters": json.loads(chapters_json),
+            "show_notes": json.loads(sn_json),
+            "mind_map": json.loads(mind_map_json),
+            "source_url": url,
+        }).eq("job_id", job_id).execute()
+
         r.hset(f"audiobook:{job_id}", mapping={
             "status": "ready",
             "final_path": final_audio,
-            "transcript_path": transcript_path,
-            "chapters": chapters_json,
-            "show_notes": sn_json,
+            "audio_url": audio_url,
+            "transcript_url": transcript_url,
             "length": length,
             "language": language,
             "difficulty": difficulty,
@@ -249,6 +303,9 @@ def process_url(
             "source_url": url,
             "script_chunks": script_chunks_json,
             "mind_map": mind_map_json,
+            "transcript_path": transcript_path,
+            "chapters": chapters_json,
+            "show_notes": sn_json,
         })
 
     except Exception as e:
@@ -257,53 +314,68 @@ def process_url(
             "error": str(e)
         })
 
+
 @app.post("/upload")
-async def upload_pdf(file: UploadFile = File(...),background_tasks: BackgroundTasks = BackgroundTasks(), length: str=Form(default="full"),
-                     language: str = Form(default=DEFAULT_LANGUAGE),
-                     difficulty: str = Form(default=DIFFICULTY),
-                     debate: bool = Form(default=False)):
+async def upload_pdf(
+        file: UploadFile = File(...),
+        background_tasks: BackgroundTasks = BackgroundTasks(),
+        user=Depends(get_current_user),
+        length: str = Form(default="full"),
+        language: str = Form(default=DEFAULT_LANGUAGE),
+        difficulty: str = Form(default=DIFFICULTY),
+        debate: bool = Form(default=False),
+):
     if length not in VALID_LENGTHS:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid length '{length}'. Must be one of: brief, standard, full"
-        )
+        raise HTTPException(status_code=400, detail=f"Invalid length. Must be one of: {VALID_LENGTHS}")
     if difficulty not in diff:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid difficulty '{difficulty}'. Must be one of {diff}"
-        )
+        raise HTTPException(status_code=400, detail=f"Invalid difficulty. Must be one of: {diff}")
     try:
         get_language_config(language)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
     job_id = str(uuid.uuid4())
-    pdf_path = os.path.join(UPLOADS_DIR, f"{job_id}_{file.filename}")
+    original_filename = file.filename or "upload.pdf"
+    # Strip the job_id prefix from filename so we keep the user's original name
+    pdf_path = os.path.join(UPLOADS_DIR, f"{job_id}_{original_filename}")
 
     with open(pdf_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
+    # Derive a human title from the filename (remove extension, replace underscores)
+    title = os.path.splitext(original_filename)[0].replace("_", " ").replace("-", " ").strip()
+
     r.hset(f"audiobook:{job_id}", mapping={
         "status": "uploading",
-        "length":length,
-        "language":language,
-        "difficulty":difficulty,
-        "debate":str(debate),
-    })
-    background_tasks.add_task(process_pdf, pdf_path, job_id, length,language, difficulty, debate)
-
-    return {
-        "job_id": job_id,
-        "status": "started",
         "length": length,
         "language": language,
         "difficulty": difficulty,
         "debate": str(debate),
-    }
+    })
+
+    supabase.table("podcasts").insert({
+        "user_id": user.id,
+        "job_id": job_id,
+        "title": title,  # populated from filename
+        "status": "processing",
+        "length": length,
+        "language": language,
+        "difficulty": difficulty,
+        "debate": debate,
+    }).execute()
+
+    # Pass user.id so the background task can write to Storage
+    background_tasks.add_task(
+        process_pdf, pdf_path, job_id, length, language, difficulty, debate, user.id
+    )
+
+    return {"job_id": job_id, "status": "started", "title": title}
 
 
 @app.post("/upload-url")
 async def upload_url(
         background_tasks: BackgroundTasks = BackgroundTasks(),
+        user=Depends(get_current_user),
         url: str = Form(...),
         length: str = Form(default="full"),
         language: str = Form(default=DEFAULT_LANGUAGE),
@@ -311,22 +383,24 @@ async def upload_url(
         debate: bool = Form(default=False),
 ):
     if length not in VALID_LENGTHS:
-        raise HTTPException(status_code=400,
-                            detail=f"Invalid length. Must be one of: {', '.join(VALID_LENGTHS)}")
+        raise HTTPException(status_code=400, detail=f"Invalid length. Must be one of: {VALID_LENGTHS}")
     if difficulty not in diff:
-        raise HTTPException(status_code=400,
-                            detail=f"Invalid difficulty. Must be one of: {', '.join(diff)}")
+        raise HTTPException(status_code=400, detail=f"Invalid difficulty. Must be one of: {diff}")
     try:
         get_language_config(language)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    # Validate URL looks reasonable before queueing
     url = url.strip()
-    if not url or not ('.' in url):
+    if not url or "." not in url:
         raise HTTPException(status_code=400, detail="Please enter a valid URL.")
 
     job_id = str(uuid.uuid4())
+
+    # Use the URL domain as a rough title until the paper title can be extracted
+    from urllib.parse import urlparse
+    domain = urlparse(url).netloc.replace("www.", "")
+    title = f"Paper from {domain}"
 
     r.hset(f"audiobook:{job_id}", mapping={
         "status": "uploading",
@@ -337,19 +411,54 @@ async def upload_url(
         "source_url": url,
     })
 
-    background_tasks.add_task(
-        process_url, url, job_id, length, language, difficulty, debate
-    )
-
-    return {
+    supabase.table("podcasts").insert({
+        "user_id": user.id,
         "job_id": job_id,
-        "status": "started",
+        "title": title,
+        "source_url": url,
+        "status": "processing",
         "length": length,
         "language": language,
         "difficulty": difficulty,
         "debate": debate,
-        "source_url": url,
-    }
+    }).execute()
+
+    background_tasks.add_task(
+        process_url, url, job_id, length, language, difficulty, debate, user.id
+    )
+
+    return {"job_id": job_id, "status": "started", "title": title, "source_url": url}
+
+
+@app.delete("/my-podcasts/{job_id}")
+def delete_podcast(job_id: str, user=Depends(get_current_user)):
+    """
+    Deletes a podcast from the DB and removes its files from Supabase Storage.
+    RLS ensures users can only delete their own rows.
+    """
+    # Fetch first to confirm ownership (belt-and-suspenders on top of RLS)
+    res = supabase.table("podcasts") \
+        .select("user_id") \
+        .eq("job_id", job_id) \
+        .single() \
+        .execute()
+
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Podcast not found")
+    if res.data["user_id"] != user.id:
+        raise HTTPException(status_code=403, detail="Not your podcast")
+
+    # Remove from Storage
+    delete_job_files(user.id, job_id)
+
+    # Remove from DB
+    supabase.table("podcasts").delete().eq("job_id", job_id).execute()
+
+    # Clean Redis
+    r.delete(f"audiobook:{job_id}")
+
+    return {"deleted": True, "job_id": job_id}
+
 
 @app.get("/languages")
 def list_languages():
@@ -612,3 +721,68 @@ def get_mind_map(job_id: str):
         raise HTTPException(status_code=404, detail="Mind map not found")
 
     return json.loads(mind_map_raw)
+
+@app.get("/my-podcasts")
+def get_my_podcasts(user = Depends(get_current_user)):
+    res = supabase.table("podcasts") \
+        .select("*") \
+        .eq("user_id", user.id) \
+        .order("created_at", desc=True) \
+        .execute()
+
+    return res.data
+
+
+@app.get("/rss/{token}")
+def generate_rss_public(token: str):
+    user_feed = supabase.table("user_feeds") \
+        .select("*") \
+        .eq("feed_token", token) \
+        .single() \
+        .execute()
+
+    if not user_feed.data:
+        raise HTTPException(404, "Invalid feed")
+
+    user_id = user_feed.data["user_id"]
+
+    podcasts = (
+        supabase.table("podcasts")
+        .select("*")
+        .eq("user_id", user_id)
+        .eq("status", "ready")
+        .order("created_at", desc=True)
+        .execute()
+        .data
+    )
+
+    base_url = os.getenv("BACKEND_URL", "http://localhost:8000")
+
+    xml = build_rss_feed(podcasts, user_id, base_url, token)
+
+    return Response(content = xml, media_type="application/rss+xml; charset=utf-8")
+
+import secrets
+
+@app.get("/rss-token")
+def get_rss_token(user=Depends(get_current_user)):
+    # check if token exists
+    res = (
+        supabase.table("user_feeds")
+        .select("feed_token")
+        .eq("user_id", user.id)
+        .execute()
+    )
+
+    if res.data:
+        return {"token": res.data[0]["feed_token"]}
+
+    # create new token
+    token = secrets.token_urlsafe(32)
+
+    supabase.table("user_feeds").insert({
+        "user_id": user.id,
+        "feed_token": token
+    }).execute()
+
+    return {"token": token}
