@@ -71,7 +71,8 @@ from supabase_client import get_supabase
 
 security = HTTPBearer()
 
-app.mount("/", StaticFiles(directory="static"), name="static")
+if os.path.exists("static"):
+    app.mount("/", StaticFiles(directory="static"), name="static")
 
 def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
     token = credentials.credentials
