@@ -1,6 +1,7 @@
 import os
-from supabase_client import supabase
+from supabase_client import get_supabase
 
+supabase = get_supabase()
 BUCKET = "podcasts"
 
 
