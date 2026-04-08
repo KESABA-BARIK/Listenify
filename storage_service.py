@@ -1,7 +1,7 @@
 import os
 from supabase_client import get_supabase
 
-supabase = get_supabase()
+
 BUCKET = "podcasts"
 
 
@@ -14,6 +14,7 @@ def upload_audio(local_path: str, user_id: str, job_id: str) -> str:
     Uploads the merged MP3 to Supabase Storage.
     Returns the public URL.
     """
+    supabase = get_supabase()
     bucket_path = _bucket_path(user_id, job_id, "audio.mp3")
 
     with open(local_path, "rb") as f:
@@ -31,6 +32,7 @@ def upload_transcript(local_path: str, user_id: str, job_id: str) -> str:
     Uploads the transcript text file to Supabase Storage.
     Returns the public URL.
     """
+    supabase = get_supabase()
     bucket_path = _bucket_path(user_id, job_id, "transcript.txt")
 
     with open(local_path, "rb") as f:
@@ -47,6 +49,7 @@ def delete_job_files(user_id: str, job_id: str) -> None:
     """
     Removes all storage files for a job. Call this when a user deletes a podcast.
     """
+    supabase = get_supabase()
     paths = [
         _bucket_path(user_id, job_id, "audio.mp3"),
         _bucket_path(user_id, job_id, "transcript.txt"),

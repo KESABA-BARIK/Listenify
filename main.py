@@ -67,7 +67,7 @@ from fastapi import Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from supabase_client import get_supabase
 
-supabase = get_supabase()
+
 
 security = HTTPBearer()
 
@@ -75,6 +75,7 @@ app.mount("/", StaticFiles(directory="static"), name="static")
 
 def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
     token = credentials.credentials
+    supabase = get_supabase()
 
     user = supabase.auth.get_user(token)
     if not user:
@@ -157,6 +158,8 @@ def process_pdf(pdf_path: str,
 
         audio_url = upload_audio(final_audio, user_id, job_id)
         transcript_url = upload_transcript(transcript_path, user_id, job_id)
+
+        supabase = get_supabase()
 
         supabase.table("podcasts").update({
             "status": "ready",
@@ -283,6 +286,8 @@ def process_url(
         audio_url = upload_audio(final_audio, user_id, job_id)
         transcript_url = upload_transcript(transcript_path, user_id, job_id)
 
+        supabase = get_supabase()
+
         supabase.table("podcasts").update({
             "status": "ready",
             "audio_url": audio_url,
@@ -361,6 +366,8 @@ async def upload_pdf(
         "debate": str(debate),
     })
 
+    supabase = get_supabase()
+
     supabase.table("podcasts").insert({
         "user_id": user.id,
         "job_id": job_id,
@@ -419,6 +426,8 @@ async def upload_url(
         "source_url": url,
     })
 
+    supabase = get_supabase()
+
     supabase.table("podcasts").insert({
         "user_id": user.id,
         "job_id": job_id,
@@ -445,6 +454,8 @@ def delete_podcast(job_id: str, user=Depends(get_current_user)):
     RLS ensures users can only delete their own rows.
     """
     # Fetch first to confirm ownership (belt-and-suspenders on top of RLS)
+
+    supabase = get_supabase()
     res = supabase.table("podcasts") \
         .select("user_id") \
         .eq("job_id", job_id) \
@@ -732,6 +743,7 @@ def get_mind_map(job_id: str):
 
 @app.get("/my-podcasts")
 def get_my_podcasts(user = Depends(get_current_user)):
+    supabase = get_supabase()
     res = supabase.table("podcasts") \
         .select("*") \
         .eq("user_id", user.id) \
@@ -743,6 +755,7 @@ def get_my_podcasts(user = Depends(get_current_user)):
 
 @app.get("/rss/{token}")
 def generate_rss_public(token: str):
+    supabase = get_supabase()
     user_feed = supabase.table("user_feeds") \
         .select("*") \
         .eq("feed_token", token) \
@@ -775,6 +788,7 @@ import secrets
 @app.get("/rss-token")
 def get_rss_token(user=Depends(get_current_user)):
     # check if token exists
+    supabase = get_supabase()
     res = (
         supabase.table("user_feeds")
         .select("feed_token")
