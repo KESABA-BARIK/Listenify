@@ -28,6 +28,8 @@ from storage_service import upload_audio, upload_transcript, delete_job_files
 from rss_service import build_rss_feed
 from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
+from sse_starlette.sse import EventSourceResponse
+import asyncio
 
 from url_extractor import extract_text_from_url
 
@@ -500,6 +502,40 @@ def status(job_id: str, long_poll: bool = False):
         pass
 
     return job
+
+@app.get("/status-stream/{job_id}")
+async def status_stream(job_id: str):
+
+    async def event_generator():
+        last_status = None
+
+        while True:
+            job = r.hgetall(f"audiobook:{job_id}")
+
+            if not job:
+                yield {"event": "error", "data": "Job not found"}
+                return
+
+            current_status = job.get("status")
+
+            # Only send if changed
+            if current_status != last_status:
+                yield {
+                    "event": "update",
+                    "data": json.dumps(job)
+                }
+                last_status = current_status
+
+            if current_status in ["ready", "failed"]:
+                yield {
+                    "event": "update",
+                    "data": json.dumps(job)
+                }
+                break  # instead of return
+
+            await asyncio.sleep(2)  # control frequency
+
+    return EventSourceResponse(event_generator())
 
 # @app.get("/stream/{job_id}/{chunk_index}")
 # def stream_chunk(job_id: str, chunk_index: int):
