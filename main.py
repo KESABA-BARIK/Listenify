@@ -2,6 +2,7 @@ import json
 import uuid
 from email.policy import default
 
+import requests
 from fastapi import FastAPI, UploadFile, File, BackgroundTasks, APIRouter, Request, HTTPException, Form
 from fastapi.responses import StreamingResponse
 from fastapi.responses import FileResponse
@@ -665,11 +666,21 @@ def get_transcript(job_id: str):
     if not job or job.get("status") != "ready":
         raise HTTPException(status_code=404, detail="Audiobook not ready")
     transcript_path = job.get("transcript_path")
-    if not transcript_path or not os.path.exists(transcript_path):
-        raise HTTPException(status_code=404, detail="Transcript not found")
-    with open(transcript_path, "r", encoding="utf-8") as f:
-        content = f.read()
-    return PlainTextResponse(content)
+    # if not transcript_path or not os.path.exists(transcript_path):
+    #     raise HTTPException(status_code=404, detail="Transcript not found")
+    if transcript_path and os.path.exists(transcript_path):
+        with open(transcript_path, "r", encoding="utf-8") as f:
+            content = f.read()
+
+    transcript_url = job.get("transcript_url")
+    if transcript_url:
+        try:
+            res = requests.get(transcript_url)
+            if res.status_code == 200:
+                return PlainTextResponse(res.text)
+        except Exception:
+            pass
+    return HTTPException(status_code=404, detail="Transcript not found")
 
 
 @app.get("/audiobook/{job_id}/transcript/download")
@@ -678,11 +689,37 @@ def download_transcript(job_id: str):
     if not job or job.get("status") != "ready":
         raise HTTPException(status_code=404, detail="Audiobook not ready")
     transcript_path = job.get("transcript_path")
-    if not transcript_path or not os.path.exists(transcript_path):
-        raise HTTPException(status_code=404, detail="Transcript not found")
-    return FileResponse(transcript_path, media_type="text/plain",
-                        filename=f"{job_id}_transcript.txt")
+    # if not transcript_path or not os.path.exists(transcript_path):
+    #     raise HTTPException(status_code=404, detail="Transcript not found")
+    if transcript_path and os.path.exists(transcript_path):
+        return FileResponse(
+            transcript_path,
+            media_type="text/plain",
+            filename=f"{job_id}_transcript.txt"
+        )
 
+        # Fallback to URL
+    transcript_url = job.get("transcript_url")
+    if transcript_url:
+        return {"download_url": transcript_url}  # frontend can redirect
+
+    raise HTTPException(status_code=404, detail="Transcript not found")
+
+
+def load_transcript_content(job: dict) -> str:
+    path = job.get("transcript_path")
+    if path and os.path.exists(path):
+        with open(path, "r", encoding="utf-8") as f:
+            return f.read()
+
+    # Fallback to URL
+    url = job.get("transcript_url")
+    if url:
+        res = requests.get(url)
+        if res.status_code == 200:
+            return res.text
+
+    raise Exception("Transcript not available")
 # quiz.........
 @app.get("/audiobook/{job_id}/quiz")
 def get_quiz(job_id: str, regenerate: bool = False):
@@ -707,8 +744,7 @@ def get_quiz(job_id: str, regenerate: bool = False):
     if not transcript_path or not os.path.exists(transcript_path):
         raise HTTPException(status_code=404, detail="Transcript not found — cannot generate quiz")
 
-    with open(transcript_path, "r", encoding="utf-8") as f:
-        transcript = f.read()
+    transcript = load_transcript_content(job)
 
     difficulty = job.get("difficulty", "intermediate")
 
@@ -753,8 +789,7 @@ def ask_question(job_id: str, body: QARequest):
     if not transcript_path or not os.path.exists(transcript_path):
         raise HTTPException(status_code=404, detail="Transcript not found")
 
-    with open(transcript_path, "r", encoding="utf-8") as f:
-        transcript = f.read()
+    transcript = load_transcript_content(job)
 
     try:
         answer = answer_question(question, transcript)
