@@ -589,63 +589,73 @@ def get_show_notes(job_id: str):
         raise HTTPException(status_code=404, detail="No show notes found for this job")
     return json.loads(notes_raw)
 
+from fastapi.responses import RedirectResponse
 @app.get("/play/{job_id}")
 def play_full(job_id: str):
     job = r.hgetall(f"audiobook:{job_id}")
     if not job or job.get("status") != "ready":
         raise HTTPException(status_code=404)
 
-    return FileResponse(job["final_path"], media_type="audio/mpeg")
+    final_path = job.get("final_path")
+    if final_path and os.path.exists(final_path):
+        return FileResponse(final_path, media_type="audio/mpeg")
 
+    audio_url = job.get("audio_url")
+    if audio_url:
+        return RedirectResponse(url=audio_url, status_code=302)
+
+    raise HTTPException(status_code=404, detail="Audio file not available")
 
 
 @app.get("/audiobook/{job_id}/stream")
 async def stream_audiobook(job_id: str, request: Request):
     job = r.hgetall(f"audiobook:{job_id}")
-
     if not job or job.get("status") != "ready":
         raise HTTPException(status_code=404, detail="Audiobook not ready")
 
-    file_path = job["final_path"]
-    if not os.path.exists(file_path):
-        raise HTTPException(status_code=404, detail="File missing")
+    file_path = job.get("final_path")
+    if file_path and os.path.exists(file_path):
+        file_size = os.path.getsize(file_path)
+        range_header = request.headers.get("range")
 
-    file_size = os.path.getsize(file_path)
-    range_header = request.headers.get("range")
+        def file_iterator(start=0, end=file_size):
+            with open(file_path, "rb") as f:
+                f.seek(start)
+                remaining = end - start
+                while remaining > 0:
+                    data = f.read(min(CHUNK_SIZE, remaining))
+                    if not data:
+                        break
+                    remaining -= len(data)
+                    yield data
 
-    def file_iterator(start=0, end=file_size):
-        with open(file_path, "rb") as f:
-            f.seek(start)
-            remaining = end - start
-            while remaining > 0:
-                data = f.read(min(CHUNK_SIZE, remaining))
-                if not data:
-                    break
-                remaining -= len(data)
-                yield data
-
-    if range_header:
-        start = int(range_header.replace("bytes=", "").split("-")[0])
-        end = file_size
-
-        headers = {
-            "Content-Range": f"bytes {start}-{end-1}/{file_size}",
-            "Accept-Ranges": "bytes",
-            "Content-Length": str(end - start),
-        }
+        if range_header:
+            start = int(range_header.replace("bytes=", "").split("-")[0])
+            end = file_size
+            headers = {
+                "Content-Range": f"bytes {start}-{end - 1}/{file_size}",
+                "Accept-Ranges": "bytes",
+                "Content-Length": str(end - start),
+            }
+            return StreamingResponse(
+                file_iterator(start, end),
+                status_code=206,
+                media_type="audio/mpeg",
+                headers=headers,
+            )
 
         return StreamingResponse(
-            file_iterator(start, end),
-            status_code=206,
+            file_iterator(),
             media_type="audio/mpeg",
-            headers=headers,
+            headers={"Accept-Ranges": "bytes"},
         )
 
-    return StreamingResponse(
-        file_iterator(),
-        media_type="audio/mpeg",
-        headers={"Accept-Ranges": "bytes"},
-    )
+    audio_url = job.get("audio_url")
+    if audio_url:
+        return RedirectResponse(url=audio_url, status_code=302)
+
+    raise HTTPException(status_code=404, detail="Audio file not available")
+
 
 @app.get("/audiobook/{job_id}/download")
 def download_audiobook(job_id: str):
@@ -653,11 +663,15 @@ def download_audiobook(job_id: str):
     if not job or job.get("status") != "ready":
         raise HTTPException(status_code=404)
 
-    return FileResponse(
-        job["final_path"],
-        media_type="audio/mpeg",
-        filename=f"{job_id}.mp3"
-    )
+    final_path = job.get("final_path")
+    if final_path and os.path.exists(final_path):
+        return FileResponse(final_path, media_type="audio/mpeg", filename=f"{job_id}.mp3")
+
+    audio_url = job.get("audio_url")
+    if audio_url:
+        return RedirectResponse(url=audio_url, status_code=302)
+
+    raise HTTPException(status_code=404, detail="Audio file not available")
 
 
 @app.get("/audiobook/{job_id}/transcript")
@@ -688,38 +702,62 @@ def download_transcript(job_id: str):
     job = r.hgetall(f"audiobook:{job_id}")
     if not job or job.get("status") != "ready":
         raise HTTPException(status_code=404, detail="Audiobook not ready")
+
     transcript_path = job.get("transcript_path")
-    # if not transcript_path or not os.path.exists(transcript_path):
-    #     raise HTTPException(status_code=404, detail="Transcript not found")
     if transcript_path and os.path.exists(transcript_path):
         return FileResponse(
             transcript_path,
             media_type="text/plain",
-            filename=f"{job_id}_transcript.txt"
+            filename=f"{job_id}_transcript.txt",
         )
 
-        # Fallback to URL
     transcript_url = job.get("transcript_url")
     if transcript_url:
-        return {"download_url": transcript_url}  # frontend can redirect
+        return RedirectResponse(url=transcript_url, status_code=302)
 
     raise HTTPException(status_code=404, detail="Transcript not found")
 
 
 def load_transcript_content(job: dict) -> str:
+    # 1. Try local /tmp path first (works in local dev / same container)
     path = job.get("transcript_path")
     if path and os.path.exists(path):
         with open(path, "r", encoding="utf-8") as f:
             return f.read()
 
-    # Fallback to URL
-    url = job.get("transcript_url")
-    if url:
-        res = requests.get(url)
-        if res.status_code == 200:
-            return res.text
+    # 2. Fall back to Supabase Storage via a signed URL
+    transcript_url = job.get("transcript_url")
+    if transcript_url:
+        try:
+            supabase = get_supabase()
 
-    raise Exception("Transcript not available")
+            from urllib.parse import urlparse
+            parsed = urlparse(transcript_url)
+            parts = parsed.path.split("/")
+            try:
+                marker_idx = next(i for i, p in enumerate(parts) if p in ("public", "sign"))
+                bucket = parts[marker_idx + 1]
+                file_path = "/".join(parts[marker_idx + 2:])
+            except (StopIteration, IndexError):
+                res = requests.get(transcript_url, timeout=15)
+                if res.status_code == 200:
+                    return res.text
+                raise Exception(f"Direct fetch failed: {res.status_code}")
+
+            signed = supabase.storage.from_(bucket).create_signed_url(file_path, 60)
+            signed_url = signed.get("signedURL") or signed.get("signed_url")
+            if not signed_url:
+                raise Exception("Could not create signed URL")
+
+            res = requests.get(signed_url, timeout=15)
+            if res.status_code == 200:
+                return res.text
+            raise Exception(f"Signed fetch failed: {res.status_code}")
+
+        except Exception as e:
+            raise Exception(f"Transcript not available from storage: {e}")
+
+    raise Exception("Transcript not available: no local path and no storage URL")
 # quiz.........
 @app.get("/audiobook/{job_id}/quiz")
 def get_quiz(job_id: str, regenerate: bool = False):
@@ -880,3 +918,46 @@ def get_rss_token(user=Depends(get_current_user)):
     }).execute()
 
     return {"token": token}
+
+
+def get_job(job_id: str) -> dict:
+    """
+    Get job data from Redis, falling back to Supabase DB if Redis is cold.
+    Returns empty dict if not found anywhere.
+    """
+    job = r.hgetall(f"audiobook:{job_id}")
+    if job:
+        return job
+
+    # Redis cold-start: try Supabase
+    try:
+        supabase = get_supabase()
+        res = supabase.table("podcasts").select("*").eq("job_id", job_id).single().execute()
+        if not res.data:
+            return {}
+
+        row = res.data
+        # Re-populate Redis from DB row
+        mapping = {
+            "status": row.get("status", ""),
+            "audio_url": row.get("audio_url") or "",
+            "transcript_url": row.get("transcript_url") or "",
+            "language": row.get("language") or "",
+            "difficulty": row.get("difficulty") or "",
+            "length": row.get("length") or "",
+            "debate": str(row.get("debate", False)),
+            "source_url": row.get("source_url") or "",
+        }
+        # JSON fields
+        for field in ("chapters", "show_notes", "mind_map"):
+            val = row.get(field)
+            if val is not None:
+                import json as _json
+                mapping[field] = _json.dumps(val, ensure_ascii=False)
+
+        r.hset(f"audiobook:{job_id}", mapping=mapping)
+        # Re-fetch so callers get a consistent dict
+        return r.hgetall(f"audiobook:{job_id}")
+
+    except Exception:
+        return {}
