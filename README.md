@@ -98,40 +98,20 @@ A 15-minute host-and-expert conversation before you dive into the full paper cha
 
 ---
 
-## How it works
 
+```mermaid
+graph TD
+    A[📄 PDF / URL] --> B[Text Extraction + Chunking]
+    B --> C[LLM Summarization]
+    C --> D[Host–Expert Script Generation]
+    D --> E[Chapters + Show Notes + Mind Map]
+    E --> F[Audio Synthesis with Edge TTS]
+    F --> G[Final Podcast]
+    G --> H[Supabase Storage]
+    H --> I[Personal Library + Authentication]
+    D --> J[Quiz + Ask AI Generation]
+    J --> I
 ```
-PDF / URL
-    │
-    ▼
-┌───────────────────┐
-│  Text extraction  │  PyMuPDF strips and cleans text from every page
-└─────────┬─────────┘
-          │
-          ▼
-┌───────────────────┐
-│  Chunking &       │  Large papers split into overlapping chunks
-│  summarisation    │  Each chunk summarised independently by LLaMA 3.1
-└─────────┬─────────┘
-          │
-          ▼
-┌───────────────────┐
-│  Script           │  Host–Expert dialogue constructed from summaries
-│  generation       │  Chapters, probing questions, and explanations woven in
-└─────────┬─────────┘
-          │
-          ├──────────────────────────────────────────────────────┐
-          ▼                                                      ▼
-┌───────────────────┐                               ┌───────────────────────┐
-│  Audio synthesis  │  Edge TTS renders each        │  Learning suite       │
-│  & merging        │  speaker line; files merged   │  Quiz / Ask AI /      │
-└─────────┬─────────┘  into one episode             │  Mind map generation  │
-          │                                          └───────────────────────┘
-          ▼
-  Podcast episode
-  + transcript + show notes + chapters
-```
-
 ---
 
 ## Quick start
@@ -289,21 +269,26 @@ Indic language support (Tamil, Hindi, Telugu) makes Listenify one of the few res
 
 | Feature | Notes |
 |---|---|
-| arXiv & Semantic Scholar integration | Direct URL-to-podcast without manual PDF download |
-| Podcast library per user | Browse and replay past generations |
 | Background music + intro/outro | Optional audio polish layer |
 | Multi-paper comparison episodes | Host compares two papers side-by-side |
 
-**Exploring**
+[//]: # (**Exploring**)
 
-| Feature | Notes |
-|---|---|
-| RSS feed export | Subscribe to your generated library in any podcast app |
-| Spotify / Apple Podcasts publishing | One-click distribution |
-| Collaborative transcript annotations | Highlight and comment with teammates |
-| Custom voice for host and expert | Bring your own TTS voice profile |
+[//]: # ()
+[//]: # (| Feature | Notes |)
 
----
+[//]: # (|---|---|)
+
+[//]: # (| RSS feed export | Subscribe to your generated library in any podcast app |)
+
+[//]: # (| Spotify / Apple Podcasts publishing | One-click distribution |)
+
+[//]: # (| Collaborative transcript annotations | Highlight and comment with teammates |)
+
+[//]: # (| Custom voice for host and expert | Bring your own TTS voice profile |)
+
+[//]: # ()
+[//]: # (---)
 
 ## Contributing
 
